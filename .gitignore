@@ -1,0 +1,39 @@
+### Maven ###
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+### Visual Studio Code ###
+.vscode/
+
+### Archivos del sistema ###
+.DS_Store
+Thumbs.db
+desktop.ini
+
+### Variables de entorno y configuraciones locales ###
+.env
+.env.*
+!.env.example
+application-local.properties
+
+### Logs ###
+*.log
+logs/
+
+### Evidencias fuera del repositorio ###
+evidencias/
+docs/evidencias/
