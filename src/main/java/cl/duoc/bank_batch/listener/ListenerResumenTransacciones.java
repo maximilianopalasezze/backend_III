@@ -1,5 +1,6 @@
 package cl.duoc.bank_batch.listener;
 
+import cl.duoc.bank_batch.servicio.ServicioControlReinicio;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.BatchStatus;
@@ -18,17 +19,28 @@ public class ListenerResumenTransacciones
 
     private final JdbcTemplate jdbcTemplate;
     private final String archivoOrigen;
+    private final ServicioControlReinicio servicioControlReinicio;
 
     public ListenerResumenTransacciones(
             JdbcTemplate jdbcTemplate,
-            String archivoOrigen
+            String archivoOrigen,
+            ServicioControlReinicio servicioControlReinicio
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.archivoOrigen = archivoOrigen;
+        this.servicioControlReinicio = servicioControlReinicio;
     }
 
     @Override
     public void beforeJob(JobExecution jobExecution) {
+
+        if (servicioControlReinicio.esReinicio(jobExecution)) {
+            logger.info(
+                    "Reinicio detectado para {}. Se conservan los datos confirmados y se continúa desde el checkpoint.",
+                    NOMBRE_JOB
+            );
+            return;
+        }
 
         jdbcTemplate.update(
                 """
@@ -37,6 +49,14 @@ public class ListenerResumenTransacciones
                   AND archivo_origen = ?
                 """,
                 NOMBRE_JOB,
+                archivoOrigen
+        );
+
+        jdbcTemplate.update(
+                """
+                DELETE FROM transacciones_procesadas
+                WHERE archivo_origen = ?
+                """,
                 archivoOrigen
         );
 

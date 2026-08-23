@@ -8,8 +8,8 @@ import org.springframework.batch.infrastructure.item.ItemProcessor;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.Normalizer;
-import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ProcesadorInteres
         implements ItemProcessor<InteresCsv, InteresProcesado> {
@@ -20,7 +20,8 @@ public class ProcesadorInteres
     private final BigDecimal tasaPrestamo;
     private final BigDecimal tasaHipoteca;
 
-    private final Set<Long> cuentasProcesadas = new HashSet<>();
+    private final Set<Long> cuentasProcesadas =
+            ConcurrentHashMap.newKeySet();
 
     public ProcesadorInteres(
             String archivoOrigen,

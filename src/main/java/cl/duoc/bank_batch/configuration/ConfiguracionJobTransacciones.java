@@ -1,28 +1,37 @@
 package cl.duoc.bank_batch.configuration;
 
 import cl.duoc.bank_batch.excepcion.ValidacionDatoException;
+import cl.duoc.bank_batch.listener.ListenerHilosProcesamiento;
 import cl.duoc.bank_batch.listener.ListenerRechazosTransaccion;
+import cl.duoc.bank_batch.listener.ListenerReintentosBatch;
+import cl.duoc.bank_batch.listener.ListenerRendimientoBatch;
 import cl.duoc.bank_batch.listener.ListenerResumenTransacciones;
 import cl.duoc.bank_batch.modelo.TransaccionCsv;
 import cl.duoc.bank_batch.modelo.TransaccionProcesada;
 import cl.duoc.bank_batch.procesador.ProcesadorTransaccion;
+import cl.duoc.bank_batch.servicio.ServicioControlReinicio;
 
+import org.springframework.batch.core.job.parameters.RunIdIncrementer;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.Step;
+import org.springframework.batch.core.step.skip.SkipPolicy;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.infrastructure.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.infrastructure.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.infrastructure.item.file.FlatFileItemReader;
 import org.springframework.batch.infrastructure.item.file.builder.FlatFileItemReaderBuilder;
+import org.springframework.batch.infrastructure.item.support.SynchronizedItemStreamReader;
+import org.springframework.batch.infrastructure.item.support.builder.SynchronizedItemStreamReaderBuilder;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.dao.TransientDataAccessException;
+import org.springframework.core.retry.RetryPolicy;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -32,7 +41,7 @@ import javax.sql.DataSource;
 public class ConfiguracionJobTransacciones {
 
     @Bean
-    public FlatFileItemReader<TransaccionCsv> lectorTransacciones(
+    public FlatFileItemReader<TransaccionCsv> lectorTransaccionesBase(
             @Value("${batch.archivo.transacciones}")
             String archivoOrigen
     ) {
@@ -43,6 +52,17 @@ public class ConfiguracionJobTransacciones {
                 .linesToSkip(1)
                 .strict(true)
                 .lineMapper(this::mapearLinea)
+                .build();
+    }
+
+    @Bean
+    public SynchronizedItemStreamReader<TransaccionCsv>
+    lectorTransacciones(
+            @Qualifier("lectorTransaccionesBase")
+            FlatFileItemReader<TransaccionCsv> lectorBase) {
+
+        return new SynchronizedItemStreamReaderBuilder<TransaccionCsv>()
+                .delegate(lectorBase)
                 .build();
     }
 
@@ -107,12 +127,14 @@ public class ConfiguracionJobTransacciones {
     @Bean
     public ListenerResumenTransacciones listenerResumenTransacciones(
             JdbcTemplate jdbcTemplate,
+            ServicioControlReinicio servicioControlReinicio,
             @Value("${batch.archivo.transacciones}")
             String archivoOrigen
     ) {
         return new ListenerResumenTransacciones(
                 jdbcTemplate,
-                archivoOrigen
+                archivoOrigen,
+                servicioControlReinicio
         );
     }
 
@@ -122,7 +144,7 @@ public class ConfiguracionJobTransacciones {
             PlatformTransactionManager transactionManager,
 
             @Qualifier("lectorTransacciones")
-            FlatFileItemReader<TransaccionCsv> lector,
+            SynchronizedItemStreamReader<TransaccionCsv> lector,
 
             @Qualifier("procesadorTransaccion")
             ProcesadorTransaccion procesador,
@@ -130,23 +152,46 @@ public class ConfiguracionJobTransacciones {
             @Qualifier("escritorTransacciones")
             JdbcBatchItemWriter<TransaccionProcesada> escritor,
 
-            ListenerRechazosTransaccion listenerRechazos
+            ListenerRechazosTransaccion listenerRechazos,
+
+            @Qualifier("politicaOmisionDatosInvalidos")
+            SkipPolicy politicaOmisionDatosInvalidos,
+
+            @Qualifier("politicaReintentoTransitorio")
+            RetryPolicy politicaReintentoTransitorio,
+
+            @Qualifier("ejecutorBatch")
+            AsyncTaskExecutor ejecutorBatch,
+
+            ListenerReintentosBatch listenerReintentosBatch,
+            ListenerRendimientoBatch listenerRendimientoBatch,
+            ListenerHilosProcesamiento listenerHilosProcesamiento,
+
+            @Value("${batch.escalamiento.chunk:5}")
+            int tamanoChunk,
+
+            @Value("${batch.reinicio.max-ejecuciones-step:3}")
+            int maximoEjecucionesStep
     ) {
         return new StepBuilder(
                 "stepProcesarTransacciones",
                 jobRepository
-        )
-                .<TransaccionCsv, TransaccionProcesada>chunk(100)
+                )
+                .startLimit(maximoEjecucionesStep)
+                .allowStartIfComplete(false)
+                .<TransaccionCsv, TransaccionProcesada>chunk(tamanoChunk)
                 .transactionManager(transactionManager)
                 .reader(lector)
                 .processor(procesador)
                 .writer(escritor)
                 .faultTolerant()
-                .skip(ValidacionDatoException.class)
-                .skipLimit(1000)
-                .retry(TransientDataAccessException.class)
-                .retryLimit(3)
+                .skipPolicy(politicaOmisionDatosInvalidos)
+                .retryPolicy(politicaReintentoTransitorio)
                 .skipListener(listenerRechazos)
+                .retryListener(listenerReintentosBatch)
+                .listener(listenerRendimientoBatch)
+                .listener(listenerHilosProcesamiento)
+                .taskExecutor(ejecutorBatch)
                 .build();
     }
 
@@ -163,6 +208,7 @@ public class ConfiguracionJobTransacciones {
                 "jobTransaccionesDiarias",
                 jobRepository
         )
+                .incrementer(new RunIdIncrementer())
                 .listener(listenerResumen)
                 .start(step)
                 .build();

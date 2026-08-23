@@ -1,29 +1,37 @@
 package cl.duoc.bank_batch.configuration;
 
 import cl.duoc.bank_batch.excepcion.ValidacionDatoException;
+import cl.duoc.bank_batch.listener.ListenerHilosProcesamiento;
 import cl.duoc.bank_batch.listener.ListenerRechazosInteres;
+import cl.duoc.bank_batch.listener.ListenerReintentosBatch;
+import cl.duoc.bank_batch.listener.ListenerRendimientoBatch;
 import cl.duoc.bank_batch.listener.ListenerResumenIntereses;
 import cl.duoc.bank_batch.modelo.InteresCsv;
 import cl.duoc.bank_batch.modelo.InteresProcesado;
 import cl.duoc.bank_batch.procesador.ProcesadorInteres;
+import cl.duoc.bank_batch.servicio.ServicioControlReinicio;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.job.parameters.RunIdIncrementer;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.Step;
 import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.core.step.skip.SkipPolicy;
 import org.springframework.batch.infrastructure.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.infrastructure.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.infrastructure.item.file.FlatFileItemReader;
 import org.springframework.batch.infrastructure.item.file.builder.FlatFileItemReaderBuilder;
 import org.springframework.batch.infrastructure.item.support.CompositeItemWriter;
+import org.springframework.batch.infrastructure.item.support.SynchronizedItemStreamReader;
 import org.springframework.batch.infrastructure.item.support.builder.CompositeItemWriterBuilder;
+import org.springframework.batch.infrastructure.item.support.builder.SynchronizedItemStreamReaderBuilder;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.TransientDataAccessException;
+import org.springframework.core.retry.RetryPolicy;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -35,7 +43,7 @@ import java.nio.charset.StandardCharsets;
 public class ConfiguracionJobIntereses {
 
     @Bean
-    public FlatFileItemReader<InteresCsv> lectorIntereses(
+    public FlatFileItemReader<InteresCsv> lectorInteresesBase(
             @Value("${batch.archivo.intereses}")
             String archivoOrigen) {
 
@@ -65,6 +73,16 @@ public class ConfiguracionJobIntereses {
                             linea
                     );
                 })
+                .build();
+    }
+
+    @Bean
+    public SynchronizedItemStreamReader<InteresCsv> lectorIntereses(
+            @Qualifier("lectorInteresesBase")
+            FlatFileItemReader<InteresCsv> lectorBase) {
+
+        return new SynchronizedItemStreamReaderBuilder<InteresCsv>()
+                .delegate(lectorBase)
                 .build();
     }
 
@@ -196,6 +214,7 @@ public class ConfiguracionJobIntereses {
     @Bean
     public ListenerResumenIntereses listenerResumenIntereses(
             JdbcTemplate jdbcTemplate,
+            ServicioControlReinicio servicioControlReinicio,
 
             @Value("${batch.archivo.intereses}")
             String archivoOrigen,
@@ -206,7 +225,8 @@ public class ConfiguracionJobIntereses {
         return new ListenerResumenIntereses(
                 jdbcTemplate,
                 archivoOrigen,
-                periodo
+                periodo,
+                servicioControlReinicio
         );
     }
 
@@ -216,7 +236,7 @@ public class ConfiguracionJobIntereses {
             PlatformTransactionManager transactionManager,
 
             @Qualifier("lectorIntereses")
-            FlatFileItemReader<InteresCsv> lectorIntereses,
+            SynchronizedItemStreamReader<InteresCsv> lectorIntereses,
 
             @Qualifier("procesadorIntereses")
             ProcesadorInteres procesadorIntereses,
@@ -226,26 +246,46 @@ public class ConfiguracionJobIntereses {
                     escritorCompuestoIntereses,
 
             @Qualifier("listenerRechazosInteres")
-            ListenerRechazosInteres listenerRechazosInteres) {
+            ListenerRechazosInteres listenerRechazosInteres,
+
+            @Qualifier("politicaOmisionDatosInvalidos")
+            SkipPolicy politicaOmisionDatosInvalidos,
+
+            @Qualifier("politicaReintentoTransitorio")
+            RetryPolicy politicaReintentoTransitorio,
+
+            @Qualifier("ejecutorBatch")
+            AsyncTaskExecutor ejecutorBatch,
+
+            ListenerReintentosBatch listenerReintentosBatch,
+            ListenerRendimientoBatch listenerRendimientoBatch,
+            ListenerHilosProcesamiento listenerHilosProcesamiento,
+
+            @Value("${batch.escalamiento.chunk:5}")
+            int tamanoChunk,
+
+            @Value("${batch.reinicio.max-ejecuciones-step:3}")
+            int maximoEjecucionesStep) {
 
         return new StepBuilder(
                 "stepProcesarIntereses",
                 jobRepository
-        )
-                .<InteresCsv, InteresProcesado>chunk(100)
+                )
+                .startLimit(maximoEjecucionesStep)
+                .allowStartIfComplete(false)
+                .<InteresCsv, InteresProcesado>chunk(tamanoChunk)
                 .transactionManager(transactionManager)
                 .reader(lectorIntereses)
                 .processor(procesadorIntereses)
                 .writer(escritorCompuestoIntereses)
                 .faultTolerant()
-                .skip(
-                        ValidacionDatoException.class,
-                        DataIntegrityViolationException.class
-                )
-                .skipLimit(2000)
-                .retry(TransientDataAccessException.class)
-                .retryLimit(3)
+                .skipPolicy(politicaOmisionDatosInvalidos)
+                .retryPolicy(politicaReintentoTransitorio)
                 .skipListener(listenerRechazosInteres)
+                .retryListener(listenerReintentosBatch)
+                .listener(listenerRendimientoBatch)
+                .listener(listenerHilosProcesamiento)
+                .taskExecutor(ejecutorBatch)
                 .build();
     }
 
@@ -263,6 +303,7 @@ public class ConfiguracionJobIntereses {
                 "jobInteresesMensuales",
                 jobRepository
         )
+                .incrementer(new RunIdIncrementer())
                 .start(stepProcesarIntereses)
                 .listener(listenerResumenIntereses)
                 .build();

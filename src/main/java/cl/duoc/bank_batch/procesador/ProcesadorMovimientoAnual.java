@@ -10,9 +10,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.Normalizer;
 import java.time.LocalDate;
-import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ProcesadorMovimientoAnual
         implements ItemProcessor<
@@ -23,7 +23,7 @@ public class ProcesadorMovimientoAnual
     private final int anioProcesado;
 
     private final Set<String> movimientosProcesados =
-            new HashSet<>();
+            ConcurrentHashMap.newKeySet();
 
     public ProcesadorMovimientoAnual(
             String archivoOrigen,

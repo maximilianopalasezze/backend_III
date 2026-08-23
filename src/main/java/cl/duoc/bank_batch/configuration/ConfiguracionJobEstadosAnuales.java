@@ -1,27 +1,35 @@
 package cl.duoc.bank_batch.configuration;
 
 import cl.duoc.bank_batch.excepcion.ValidacionDatoException;
+import cl.duoc.bank_batch.listener.ListenerHilosProcesamiento;
 import cl.duoc.bank_batch.listener.ListenerRechazosMovimientoAnual;
+import cl.duoc.bank_batch.listener.ListenerReintentosBatch;
+import cl.duoc.bank_batch.listener.ListenerRendimientoBatch;
 import cl.duoc.bank_batch.listener.ListenerResumenEstadosAnuales;
 import cl.duoc.bank_batch.modelo.MovimientoAnualCsv;
 import cl.duoc.bank_batch.modelo.MovimientoAnualProcesado;
 import cl.duoc.bank_batch.procesador.ProcesadorMovimientoAnual;
+import cl.duoc.bank_batch.servicio.ServicioControlReinicio;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.job.parameters.RunIdIncrementer;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.Step;
 import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.core.step.skip.SkipPolicy;
 import org.springframework.batch.infrastructure.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.infrastructure.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.infrastructure.item.file.FlatFileItemReader;
 import org.springframework.batch.infrastructure.item.file.builder.FlatFileItemReaderBuilder;
+import org.springframework.batch.infrastructure.item.support.SynchronizedItemStreamReader;
+import org.springframework.batch.infrastructure.item.support.builder.SynchronizedItemStreamReaderBuilder;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.TransientDataAccessException;
+import org.springframework.core.retry.RetryPolicy;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -33,7 +41,7 @@ public class ConfiguracionJobEstadosAnuales {
 
     @Bean
     public FlatFileItemReader<MovimientoAnualCsv>
-    lectorMovimientosAnuales(
+    lectorMovimientosAnualesBase(
 
             @Value("${batch.archivo.estados}")
             String archivoOrigen) {
@@ -64,6 +72,17 @@ public class ConfiguracionJobEstadosAnuales {
                             linea
                     );
                 })
+                .build();
+    }
+
+    @Bean
+    public SynchronizedItemStreamReader<MovimientoAnualCsv>
+    lectorMovimientosAnuales(
+            @Qualifier("lectorMovimientosAnualesBase")
+            FlatFileItemReader<MovimientoAnualCsv> lectorBase) {
+
+        return new SynchronizedItemStreamReaderBuilder<MovimientoAnualCsv>()
+                .delegate(lectorBase)
                 .build();
     }
 
@@ -134,6 +153,7 @@ public class ConfiguracionJobEstadosAnuales {
     listenerResumenEstadosAnuales(
 
             JdbcTemplate jdbcTemplate,
+            ServicioControlReinicio servicioControlReinicio,
 
             @Value("${batch.archivo.estados}")
             String archivoOrigen,
@@ -144,7 +164,8 @@ public class ConfiguracionJobEstadosAnuales {
         return new ListenerResumenEstadosAnuales(
                 jdbcTemplate,
                 archivoOrigen,
-                anioProcesado
+                anioProcesado,
+                servicioControlReinicio
         );
     }
 
@@ -154,7 +175,7 @@ public class ConfiguracionJobEstadosAnuales {
             PlatformTransactionManager transactionManager,
 
             @Qualifier("lectorMovimientosAnuales")
-            FlatFileItemReader<MovimientoAnualCsv>
+            SynchronizedItemStreamReader<MovimientoAnualCsv>
                     lectorMovimientosAnuales,
 
             @Qualifier("procesadorMovimientosAnuales")
@@ -167,29 +188,49 @@ public class ConfiguracionJobEstadosAnuales {
 
             @Qualifier("listenerRechazosMovimientoAnual")
             ListenerRechazosMovimientoAnual
-                    listenerRechazosMovimientoAnual) {
+                    listenerRechazosMovimientoAnual,
+
+            @Qualifier("politicaOmisionDatosInvalidos")
+            SkipPolicy politicaOmisionDatosInvalidos,
+
+            @Qualifier("politicaReintentoTransitorio")
+            RetryPolicy politicaReintentoTransitorio,
+
+            @Qualifier("ejecutorBatch")
+            AsyncTaskExecutor ejecutorBatch,
+
+            ListenerReintentosBatch listenerReintentosBatch,
+            ListenerRendimientoBatch listenerRendimientoBatch,
+            ListenerHilosProcesamiento listenerHilosProcesamiento,
+
+            @Value("${batch.escalamiento.chunk:5}")
+            int tamanoChunk,
+
+            @Value("${batch.reinicio.max-ejecuciones-step:3}")
+            int maximoEjecucionesStep) {
 
         return new StepBuilder(
                 "stepProcesarMovimientosAnuales",
                 jobRepository
         )
+                .startLimit(maximoEjecucionesStep)
+                .allowStartIfComplete(false)
                 .<MovimientoAnualCsv,
-                        MovimientoAnualProcesado>chunk(100)
+                        MovimientoAnualProcesado>chunk(tamanoChunk)
                 .transactionManager(transactionManager)
                 .reader(lectorMovimientosAnuales)
                 .processor(procesadorMovimientosAnuales)
                 .writer(escritorMovimientosAnuales)
                 .faultTolerant()
-                .skip(
-                        ValidacionDatoException.class,
-                        DataIntegrityViolationException.class
-                )
-                .skipLimit(2000)
-                .retry(TransientDataAccessException.class)
-                .retryLimit(3)
+                .skipPolicy(politicaOmisionDatosInvalidos)
+                .retryPolicy(politicaReintentoTransitorio)
                 .skipListener(
                         listenerRechazosMovimientoAnual
                 )
+                .retryListener(listenerReintentosBatch)
+                .listener(listenerRendimientoBatch)
+                .listener(listenerHilosProcesamiento)
+                .taskExecutor(ejecutorBatch)
                 .build();
     }
 
@@ -208,6 +249,7 @@ public class ConfiguracionJobEstadosAnuales {
                 "jobEstadosCuentaAnuales",
                 jobRepository
         )
+                .incrementer(new RunIdIncrementer())
                 .start(stepProcesarMovimientosAnuales)
                 .listener(listenerResumenEstadosAnuales)
                 .build();

@@ -1,5 +1,6 @@
 package cl.duoc.bank_batch.listener;
 
+import cl.duoc.bank_batch.servicio.ServicioControlReinicio;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.job.JobExecution;
@@ -21,19 +22,30 @@ public class ListenerResumenIntereses
     private final JdbcTemplate jdbcTemplate;
     private final String archivoOrigen;
     private final String periodo;
+    private final ServicioControlReinicio servicioControlReinicio;
 
     public ListenerResumenIntereses(
             JdbcTemplate jdbcTemplate,
             String archivoOrigen,
-            String periodo) {
+            String periodo,
+            ServicioControlReinicio servicioControlReinicio) {
 
         this.jdbcTemplate = jdbcTemplate;
         this.archivoOrigen = archivoOrigen;
         this.periodo = periodo;
+        this.servicioControlReinicio = servicioControlReinicio;
     }
 
     @Override
     public void beforeJob(JobExecution jobExecution) {
+
+        if (servicioControlReinicio.esReinicio(jobExecution)) {
+            logger.info(
+                    "Reinicio detectado para {}. Se conservan los datos confirmados y se continúa desde el checkpoint.",
+                    NOMBRE_JOB
+            );
+            return;
+        }
 
         logger.info(
                 "Iniciando cálculo de intereses. Archivo: {}, periodo: {}",

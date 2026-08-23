@@ -1,5 +1,6 @@
 package cl.duoc.bank_batch.listener;
 
+import cl.duoc.bank_batch.servicio.ServicioControlReinicio;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.BatchStatus;
@@ -24,19 +25,30 @@ public class ListenerResumenEstadosAnuales
     private final JdbcTemplate jdbcTemplate;
     private final String archivoOrigen;
     private final int anioProcesado;
+    private final ServicioControlReinicio servicioControlReinicio;
 
     public ListenerResumenEstadosAnuales(
             JdbcTemplate jdbcTemplate,
             String archivoOrigen,
-            int anioProcesado) {
+            int anioProcesado,
+            ServicioControlReinicio servicioControlReinicio) {
 
         this.jdbcTemplate = jdbcTemplate;
         this.archivoOrigen = archivoOrigen;
         this.anioProcesado = anioProcesado;
+        this.servicioControlReinicio = servicioControlReinicio;
     }
 
     @Override
     public void beforeJob(JobExecution jobExecution) {
+
+        if (servicioControlReinicio.esReinicio(jobExecution)) {
+            logger.info(
+                    "Reinicio detectado para {}. Se conservan los datos confirmados y se continúa desde el checkpoint.",
+                    NOMBRE_JOB
+            );
+            return;
+        }
 
         logger.info(
                 "Iniciando generación de estados anuales. Archivo: {}, año: {}",
