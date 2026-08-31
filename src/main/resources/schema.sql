@@ -106,3 +106,28 @@ CREATE TABLE IF NOT EXISTS registros_rechazados (
     motivo_rechazo VARCHAR(500) NOT NULL,
     fecha_rechazo TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+
+-- =====================================================
+-- MÉTRICAS PARA COMPARAR CONFIGURACIONES DE RENDIMIENTO
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS metricas_rendimiento_batch (
+                                                          id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                                          nombre_job VARCHAR(100) NOT NULL,
+    nombre_step VARCHAR(100) NOT NULL,
+    id_prueba VARCHAR(100) NOT NULL,
+    cantidad_hilos INT NOT NULL,
+    tamano_chunk INT NOT NULL,
+    duracion_ms BIGINT NOT NULL,
+    registros_por_segundo DECIMAL(15,2) NOT NULL,
+    registros_leidos BIGINT NOT NULL,
+    registros_escritos BIGINT NOT NULL,
+    registros_omitidos BIGINT NOT NULL,
+    commits BIGINT NOT NULL,
+    rollbacks BIGINT NOT NULL,
+    estado VARCHAR(20) NOT NULL,
+    fecha_ejecucion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    INDEX idx_metricas_prueba (id_prueba),
+    INDEX idx_metricas_job (nombre_job, fecha_ejecucion)
+    );

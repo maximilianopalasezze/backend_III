@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.dao.TransientDataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.time.Duration;
@@ -20,11 +21,15 @@ public class ConfiguracionEscalamientoBatch {
 
     @Bean(name = "ejecutorBatch")
     public ThreadPoolTaskExecutor ejecutorBatch(
-            @Value("${batch.escalamiento.hilos:3}") int cantidadHilos,
+            @Value("${batch.escalamiento.hilos:3}")
+            int cantidadHilos,
+
             @Value("${batch.escalamiento.capacidad-cola:50}")
             int capacidadCola) {
 
-        ThreadPoolTaskExecutor ejecutor = new ThreadPoolTaskExecutor();
+        ThreadPoolTaskExecutor ejecutor =
+                new ThreadPoolTaskExecutor();
+
         ejecutor.setCorePoolSize(cantidadHilos);
         ejecutor.setMaxPoolSize(cantidadHilos);
         ejecutor.setQueueCapacity(capacidadCola);
@@ -32,6 +37,7 @@ public class ConfiguracionEscalamientoBatch {
         ejecutor.setWaitForTasksToCompleteOnShutdown(true);
         ejecutor.setAwaitTerminationSeconds(60);
         ejecutor.setPrestartAllCoreThreads(true);
+
         return ejecutor;
     }
 
@@ -40,13 +46,16 @@ public class ConfiguracionEscalamientoBatch {
             @Value("${batch.tolerancia.limite-omisiones:2000}")
             long limiteOmisiones) {
 
-        return new PoliticaOmisionDatosInvalidos(limiteOmisiones);
+        return new PoliticaOmisionDatosInvalidos(
+                limiteOmisiones
+        );
     }
 
     @Bean(name = "politicaReintentoTransitorio")
     public RetryPolicy politicaReintentoTransitorio(
             @Value("${batch.tolerancia.max-reintentos:3}")
             int maximoReintentos,
+
             @Value("${batch.tolerancia.pausa-reintento-ms:250}")
             long pausaMilisegundos) {
 
@@ -66,18 +75,31 @@ public class ConfiguracionEscalamientoBatch {
     public ListenerRendimientoBatch listenerRendimientoBatch(
             @Qualifier("ejecutorBatch")
             ThreadPoolTaskExecutor ejecutorBatch,
-            @Value("${batch.escalamiento.hilos:3}") int cantidadHilos,
-            @Value("${batch.escalamiento.chunk:5}") int tamanoChunk) {
+
+            JdbcTemplate jdbcTemplate,
+
+            @Value("${batch.escalamiento.hilos:3}")
+            int cantidadHilos,
+
+            @Value("${batch.escalamiento.chunk:5}")
+            int tamanoChunk,
+
+            @Value("${batch.rendimiento.id-prueba:configuracion-base}")
+            String idPrueba) {
 
         return new ListenerRendimientoBatch(
                 ejecutorBatch,
+                jdbcTemplate,
                 cantidadHilos,
-                tamanoChunk
+                tamanoChunk,
+                idPrueba
         );
     }
 
     @Bean
-    public ListenerHilosProcesamiento listenerHilosProcesamiento() {
+    public ListenerHilosProcesamiento
+    listenerHilosProcesamiento() {
+
         return new ListenerHilosProcesamiento();
     }
 }
