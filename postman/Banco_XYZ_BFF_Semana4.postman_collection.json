@@ -1,0 +1,361 @@
+{
+  "info": {
+    "_postman_id": "56ad84ad-79d9-4f62-a4fc-2de4f37b3423",
+    "name": "Banco XYZ - BFF Semana 4",
+    "description": "Pruebas de los tres BFF desplegados por perfil. Cuenta oficial sugerida: 106.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "BFF Web",
+      "item": [
+        {
+          "name": "Cuenta completa",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Estado 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Respuesta personalizada WEB', () => {",
+                  "  pm.expect(body.canal).to.eql('WEB');",
+                  "  pm.expect(body).to.have.property('titular');",
+                  "  pm.expect(body).to.have.property('ultimoInteres');",
+                  "  pm.expect(body).to.have.property('movimientosRecientes');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-BFF-API-Key",
+                "value": "{{webApiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{webUrl}}/api/bff/web/cuentas/{{cuentaId}}",
+              "host": ["{{webUrl}}"],
+              "path": ["api", "bff", "web", "cuentas", "{{cuentaId}}"]
+            }
+          }
+        },
+        {
+          "name": "Resumen operacional",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Estado 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Canal WEB', () => pm.expect(pm.response.json().canal).to.eql('WEB'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-BFF-API-Key",
+                "value": "{{webApiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{webUrl}}/api/bff/web/resumen",
+              "host": ["{{webUrl}}"],
+              "path": ["api", "bff", "web", "resumen"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BFF Móvil",
+      "item": [
+        {
+          "name": "Inicio liviano",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Estado 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Respuesta liviana MOVIL', () => {",
+                  "  pm.expect(body.canal).to.eql('MOVIL');",
+                  "  pm.expect(body).to.have.property('saldoDisponible');",
+                  "  pm.expect(body).not.to.have.property('ultimoInteres');",
+                  "  pm.expect(body).not.to.have.property('ultimoEstadoAnual');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-BFF-API-Key",
+                "value": "{{movilApiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{movilUrl}}/api/bff/movil/cuentas/{{cuentaId}}",
+              "host": ["{{movilUrl}}"],
+              "path": ["api", "bff", "movil", "cuentas", "{{cuentaId}}"]
+            }
+          }
+        },
+        {
+          "name": "Últimos movimientos livianos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Estado 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Máximo cinco movimientos', () => pm.expect(pm.response.json().length).to.be.at.most(5));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-BFF-API-Key",
+                "value": "{{movilApiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{movilUrl}}/api/bff/movil/cuentas/{{cuentaId}}/movimientos?limite=5",
+              "host": ["{{movilUrl}}"],
+              "path": ["api", "bff", "movil", "cuentas", "{{cuentaId}}", "movimientos"],
+              "query": [
+                {
+                  "key": "limite",
+                  "value": "5"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BFF Cajero",
+      "item": [
+        {
+          "name": "Consulta segura de saldo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Estado 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Respuesta restringida CAJERO', () => {",
+                  "  pm.expect(body.canal).to.eql('CAJERO');",
+                  "  pm.expect(body.cuentaEnmascarada).to.match(/^\\*{4}/);",
+                  "  pm.expect(body).not.to.have.property('titular');",
+                  "  pm.expect(body).not.to.have.property('edad');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-BFF-API-Key",
+                "value": "{{cajeroApiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cajeroUrl}}/api/bff/cajero/cuentas/{{cuentaId}}/saldo",
+              "host": ["{{cajeroUrl}}"],
+              "path": ["api", "bff", "cajero", "cuentas", "{{cuentaId}}", "saldo"]
+            }
+          }
+        },
+        {
+          "name": "Retiro transaccional",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Estado 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Retiro aprobado y auditado', () => {",
+                  "  pm.expect(body.canal).to.eql('CAJERO');",
+                  "  pm.expect(body.estado).to.eql('APROBADA');",
+                  "  pm.expect(body).to.have.property('referencia');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-BFF-API-Key",
+                "value": "{{cajeroApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monto\": 2000\n}"
+            },
+            "url": {
+              "raw": "{{cajeroUrl}}/api/bff/cajero/cuentas/{{cuentaId}}/retiros",
+              "host": ["{{cajeroUrl}}"],
+              "path": ["api", "bff", "cajero", "cuentas", "{{cuentaId}}", "retiros"]
+            }
+          }
+        },
+        {
+          "name": "Validación - monto no permitido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rechaza el monto con HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Explica la regla del cajero', () => pm.expect(pm.response.json().mensaje).to.include('múltiplo de 1000'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-BFF-API-Key",
+                "value": "{{cajeroApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monto\": 1500\n}"
+            },
+            "url": {
+              "raw": "{{cajeroUrl}}/api/bff/cajero/cuentas/{{cuentaId}}/retiros",
+              "host": ["{{cajeroUrl}}"],
+              "path": ["api", "bff", "cajero", "cuentas", "{{cuentaId}}", "retiros"]
+            }
+          }
+        },
+        {
+          "name": "Seguridad - clave incorrecta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rechaza credenciales inválidas', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-BFF-API-Key",
+                "value": "clave-incorrecta",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cajeroUrl}}/api/bff/cajero/cuentas/{{cuentaId}}/saldo",
+              "host": ["{{cajeroUrl}}"],
+              "path": ["api", "bff", "cajero", "cuentas", "{{cuentaId}}", "saldo"]
+            }
+          }
+        },
+        {
+          "name": "Autorización - ruta Web bloqueada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Impide usar el rol CAJERO en una ruta Web', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-BFF-API-Key",
+                "value": "{{cajeroApiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cajeroUrl}}/api/bff/web/resumen",
+              "host": ["{{cajeroUrl}}"],
+              "path": ["api", "bff", "web", "resumen"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "webUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "movilUrl",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "cajeroUrl",
+      "value": "http://localhost:8083"
+    },
+    {
+      "key": "webApiKey",
+      "value": "web-local-key"
+    },
+    {
+      "key": "movilApiKey",
+      "value": "movil-local-key"
+    },
+    {
+      "key": "cajeroApiKey",
+      "value": "cajero-local-key"
+    },
+    {
+      "key": "cuentaId",
+      "value": "106"
+    }
+  ]
+}

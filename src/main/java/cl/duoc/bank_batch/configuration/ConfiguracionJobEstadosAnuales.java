@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.task.AsyncTaskExecutor;
@@ -37,6 +38,7 @@ import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
 
 @Configuration
+@Profile("!web & !movil & !cajero")
 public class ConfiguracionJobEstadosAnuales {
 
     @Bean

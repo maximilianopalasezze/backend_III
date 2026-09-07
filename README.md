@@ -1,519 +1,320 @@
-Banco XYZ: optimización y resiliencia de procesos batch
+# Banco XYZ: Backend for Frontend y procesos batch
 
-Proyecto académico de Desarrollo Backend III orientado a modernizar tres procesos legacy del Banco XYZ mediante Java 17, Spring Boot 4.1.0, Spring Batch y MySQL 8.
+Proyecto académico de Desarrollo Backend III desarrollado con Java 17, Spring Boot 4.1.0, Spring Batch, Spring MVC, Spring Security, Spring JDBC y MySQL 8.
 
-La solución procesa archivos CSV oficiales, valida y transforma los registros con ItemProcessor, persiste los resultados válidos, registra los rechazos y mantiene métricas de rendimiento. La versión de la Semana 3 incorpora procesamiento multihilo configurable, comparación de diferentes tamaños de chunk, políticas personalizadas de omisión y reintento, control de reinicios y evidencia de reejecución sin duplicados.
+La solución conserva los tres procesos batch de las semanas anteriores y agrega una arquitectura **Backend for Frontend (BFF)** para tres clientes con necesidades diferentes: Web, aplicación móvil y cajero automático.
 
-Objetivo
+## Objetivo de la Semana 4
 
-Diseñar una arquitectura Spring Batch capaz de ejecutar los Jobs requeridos de forma estructurada, escalable y tolerante a fallos. Además de obtener la salida esperada en MySQL, se busca comparar configuraciones de procesamiento para seleccionar una alternativa que mejore el tiempo de ejecución sin afectar la integridad de los datos.
+Aplicar el patrón BFF para evitar que todos los clientes consuman una API genérica. Cada canal dispone de un backend activable y desplegable de manera independiente, una ruta propia, una credencial propia, autorización por rol y DTOs adaptados a su interfaz.
 
-Tecnologías utilizadas
+La implementación responde a los cuatro criterios de evaluación:
 
-Java 17.
+1. Demuestra una comprensión clara del patrón BFF.
+2. Implementa una estrategia de BFF.
+3. Personaliza la información según las necesidades de cada frontend.
+4. Organiza el código de acuerdo con la estrategia elegida.
 
-Spring Boot 4.1.0.
+La trazabilidad detallada entre pauta, código y evidencia se encuentra en `docs/Checklist_Pauta_Semana4.md`.
 
-Spring Batch.
+## ¿Qué es BFF y qué estrategia se eligió?
 
-Spring JDBC.
+Backend for Frontend crea una capa de backend específica para cada tipo de interfaz. El BFF conoce las necesidades del cliente, consulta los datos compartidos y entrega una respuesta ya adaptada. Esto reduce datos innecesarios, evita lógica de composición en el frontend y permite aplicar seguridad particular por canal.
 
-MySQL 8.
+Se eligió una estrategia de **un BFF por canal dentro de un mismo código fuente, con despliegues independientes mediante perfiles de Spring**:
 
-Maven Wrapper.
+- Perfil `web`: BFF Web en el puerto 8081.
+- Perfil `movil`: BFF Móvil en el puerto 8082.
+- Perfil `cajero`: BFF Cajero en el puerto 8083.
 
-IntelliJ IDEA.
+Cada ejecución activa solamente los controladores y servicios de su canal. Los tres BFF reutilizan una capa de acceso a MySQL, pero no comparten sus contratos HTTP ni sus DTOs.
 
-MySQL Workbench.
+Las configuraciones de Jobs, Steps y pool batch se excluyen cuando cualquiera de esos perfiles BFF está activo. Por tanto, un servidor HTTP no crea lectores ni trabajadores batch que no necesita.
 
-Arquitectura general
+```mermaid
+flowchart TD
+    W[Frontend Web] --> BW[BFF Web :8081]
+    M[Aplicación Móvil] --> BM[BFF Móvil :8082]
+    C[Cajero automático] --> BC[BFF Cajero :8083]
+    BW --> R[Repositorio de lectura compartido]
+    BM --> R
+    BC --> R
+    BC --> O[Retiro transaccional y auditoría]
+    R --> DB[(MySQL: resultados oficiales)]
+    O --> DB
+```
 
-Cada proceso se implementa como un Job compuesto por un Step orientado a chunks:
+### Ventajas y decisión arquitectónica
 
-Archivo CSV oficial
-        |
-SynchronizedItemStreamReader
-        |
-ItemProcessor: validación y transformación
-        |
-JdbcBatchItemWriter
-        |
-MySQL
+- Cada frontend recibe solamente los campos que necesita.
+- Cada canal puede ejecutarse, protegerse y escalarse de forma independiente.
+- Un cambio del contrato móvil no obliga a modificar el contrato Web o Cajero.
+- La lógica bancaria y el acceso a datos comunes no se duplican.
+- La separación mediante paquetes y perfiles mantiene una solución académica fácil de ejecutar sin convertir el proyecto en tres repositorios distintos.
 
-Los Steps comparten un ThreadPoolTaskExecutor, una política personalizada de omisión, una política de reintento para fallos transitorios y listeners para rechazos, reintentos, uso de hilos, métricas y resúmenes finales.
+La principal compensación es que existen tres aplicaciones en ejecución y contratos separados que deben mantenerse. En este proyecto esa complejidad es intencional porque demuestra el aislamiento requerido por el patrón.
 
-Jobs y Steps implementados
+## Personalización por frontend
 
-Job
+| Canal | Necesidad | Respuesta diseñada | Información omitida |
+|---|---|---|---|
+| Web | Vista completa y compleja | Titular, producto, saldo, último interés, estado anual, hasta 20 movimientos, descripciones, fuentes y resumen operacional | No se omite información relevante para la vista administrativa |
+| Móvil | Respuesta ligera | Datos esenciales de la cuenta y endpoint separado con máximo 10 movimientos | Edad, interés, estado anual, descripción y archivo de origen |
+| Cajero | Operaciones críticas y seguras | Cuenta enmascarada, saldo, disponibilidad de retiro y retiro transaccional auditado | Nombre, edad, historial, fuentes y demás información personal |
 
-Step
+La diferencia no consiste solo en cambiar la URL: cada canal tiene DTOs y servicios propios. Esto se comprueba en Postman observando que la misma cuenta produce estructuras JSON diferentes.
 
-Archivo oficial
+## Seguridad por canal
 
-Resultado principal
+Cada BFF exige el header `X-BFF-API-Key` y su propia variable de entorno:
 
-jobTransaccionesDiarias
+| Perfil | Variable | Rol autorizado | Rutas permitidas |
+|---|---|---|---|
+| `web` | `BFF_WEB_API_KEY` | `ROLE_WEB` | `/api/bff/web/**` |
+| `movil` | `BFF_MOVIL_API_KEY` | `ROLE_MOVIL` | `/api/bff/movil/**` |
+| `cajero` | `BFF_CAJERO_API_KEY` | `ROLE_CAJERO` | `/api/bff/cajero/**` |
 
-stepProcesarTransacciones
+La API es stateless, no crea sesiones y rechaza una clave ausente o incorrecta con HTTP 401. Una credencial válida que intenta acceder a la ruta de otro canal recibe HTTP 403. Las claves no se guardan en Git: son obligatorias al iniciar cada perfil.
 
-data/semana_3/transacciones.csv
+El retiro del cajero utiliza una transacción y bloquea la cuenta con `SELECT ... FOR UPDATE`. La actualización del saldo y la escritura en `operaciones_cajero` se confirman juntas; si una falla, ambas se revierten.
 
-Valida transacciones, detecta anomalías y persiste los registros aceptados.
+## Organización del código
 
-jobInteresesMensuales
-
-stepProcesarIntereses
-
-data/semana_3/intereses.csv
-
-Calcula intereses mensuales y saldos finales.
-
-jobEstadosCuentaAnuales
-
-stepProcesarMovimientosAnuales
-
-data/semana_3/cuentas_anuales.csv
-
-Procesa movimientos y genera estados de cuenta anuales mediante una agregación posterior al procesamiento paralelo.
-
-Archivos oficiales utilizados
-
-Los tres archivos de entrada corresponden a los datos oficiales de la Semana 3 publicados en el repositorio bank_legacy_data. Cada archivo contiene 1.000 registros, además de su encabezado.
-
-Archivo
-
-Registros leídos
-
-data/semana_3/transacciones.csv
-
-1.000
-
-data/semana_3/intereses.csv
-
-1.000
-
-data/semana_3/cuentas_anuales.csv
-
-1.000
-
-Los archivos se encuentran incluidos en src/main/resources/data/semana_3 y no fueron modificados para realizar las ejecuciones documentadas.
-
-Lectura y procesamiento concurrente
-
-Los lectores FlatFileItemReader están envueltos en SynchronizedItemStreamReader, lo que protege el avance del archivo cuando varios trabajadores solicitan elementos de manera concurrente.
-
-El escalamiento se realiza con un ThreadPoolTaskExecutor configurable. El pool utiliza el mismo valor para corePoolSize y maxPoolSize, posee una cola limitada y emplea el prefijo batch-worker-, permitiendo verificar en los logs qué trabajadores participaron.
-
-Los conjuntos empleados para detectar duplicados se construyen con ConcurrentHashMap.newKeySet(), evitando condiciones de carrera entre los hilos. En el proceso anual, la consolidación por cuenta se ejecuta una vez finalizado correctamente el Step paralelo, de modo que no se actualizan acumuladores compartidos durante el procesamiento concurrente.
-
-Transformaciones y validaciones
-
-Los ItemProcessor validan los campos antes de construir los objetos que serán persistidos. Entre las reglas aplicadas se encuentran:
-
-Identificadores obligatorios y con formato válido.
-
-Fechas obligatorias y convertibles al formato esperado.
-
-Montos presentes y numéricos.
-
-Tipos de transacción, cuenta o movimiento permitidos.
-
-Edad obligatoria y dentro del rango establecido.
-
-Nombre del titular obligatorio.
-
-Saldo presente y no negativo.
-
-Descripción obligatoria en los movimientos anuales.
-
-Detección de registros duplicados cuando corresponde.
-
-Los registros que no cumplen estas reglas se omiten mediante la política configurada y se almacenan en registros_rechazados, incluyendo Job, Step, archivo, línea, contenido original, motivo y fecha del rechazo.
-
-Tolerancia a fallos
-
-La solución diferencia los errores de calidad de datos de los errores técnicos:
-
-PoliticaOmisionDatosInvalidos permite omitir hasta 2.000 errores conocidos de validación, parseo o integridad.
-
-Las excepciones técnicas desconocidas no se omiten y detienen el Step para evitar ocultar fallos graves.
-
-TransientDataAccessException se reintenta hasta tres veces.
-
-Entre reintentos se aplica una pausa de 250 ms para no saturar MySQL.
-
-Las escrituras se confirman por chunk; si ocurre un error, se revierte únicamente la transacción del bloque actual.
-
-ListenerReintentosBatch registra cada intento para facilitar el diagnóstico.
-
-Reinicio y reejecución
-
-Los Steps se configuran con startLimit=3 y allowStartIfComplete=false. Los Jobs utilizan RunIdIncrementer y Spring Batch conserva el ExecutionContext y los metadatos de ejecución.
-
-Si una instancia termina en FAILED, puede reiniciarse conservando los mismos parámetros para continuar desde el último checkpoint confirmado.
-
-Si se necesita procesar nuevamente el archivo completo, se utiliza un run.id nuevo.
-
-La preparación de las tablas propias se realiza solamente al comenzar una instancia nueva; durante un reinicio se conservan los registros confirmados.
-
-Las restricciones únicas y las escrituras idempotentes evitan que la salida quede duplicada.
-
-Como prueba, el Job anual fue ejecutado nuevamente con un run.id diferente. Después de la reejecución se mantuvieron 723 movimientos únicos y 20 estados de cuenta únicos, ambos verificados en MySQL como SIN DUPLICADOS.
-
-Configuración de escalamiento
-
-Los parámetros quedan externalizados en application.properties y pueden modificarse mediante variables de entorno:
-
-batch.escalamiento.hilos=${BATCH_HILOS:3}
-batch.escalamiento.chunk=${BATCH_CHUNK:50}
-batch.escalamiento.capacidad-cola=${BATCH_CAPACIDAD_COLA:50}
-batch.rendimiento.id-prueba=${BATCH_ID_PRUEBA:configuracion-optima-h3-c50}
-
-batch.tolerancia.limite-omisiones=2000
-batch.tolerancia.max-reintentos=3
-batch.tolerancia.pausa-reintento-ms=250
-batch.reinicio.max-ejecuciones-step=3
-
-El pool Hikari mantiene un máximo de seis conexiones: tres destinadas al trabajo paralelo y conexiones adicionales para metadatos, listeners y consultas de resumen.
-
-Comparación de rendimiento
-
-Las pruebas se realizaron sobre el archivo oficial data/semana_3/transacciones.csv. Las métricas se almacenaron en metricas_rendimiento_batch, registrando identificador de prueba, hilos, chunk, duración, velocidad, lecturas, escrituras, omisiones, commits, rollbacks y estado final.
-
-Configuración
-
-Hilos
-
-Chunk
-
-Ejecuciones
-
-Duración promedio
-
-Velocidad promedio
-
-transacciones_h1_c5
-
-1
-
-5
-
-2
-
-3.827,50 ms
-
-261,53 registros/s
-
-transacciones_h3_c5
-
-3
-
-5
-
-1
-
-3.117,00 ms
-
-320,82 registros/s
-
-transacciones_h3_c25
-
-3
-
-25
-
-1
-
-1.826,00 ms
-
-547,52 registros/s
-
-transacciones_h3_c50
-
-3
-
-50
-
-1
-
-1.625,00 ms
-
-615,15 registros/s
-
-La configuración H3/C50 fue seleccionada como la alternativa óptima observada. Frente al promedio de H1/C5, redujo la duración aproximadamente un 57,5 % y aumentó la velocidad promedio alrededor de un 135,2 %. También disminuyó la cantidad de commits de 200 a 20, sin cambiar las 1.000 lecturas, las 491 escrituras, las 509 omisiones ni el estado COMPLETED.
-
-Los tiempos dependen del equipo, la carga del sistema y el estado de MySQL. Por ese motivo, la conclusión se basa en las ejecuciones registradas en el entorno de prueba y no se presenta como una medida universal.
-
-Resultados con los archivos oficiales
-
-Las ejecuciones finales utilizaron tres hilos y chunks de 50 registros.
-
-Job
-
-Leídos
-
-Escritos
-
-Rechazados
-
-Commits
-
-Rollbacks
-
-Estado
-
-Transacciones diarias
-
-1.000
-
-491
-
-509
-
-20
-
-0
-
-COMPLETED
-
-Intereses mensuales
-
-1.000
-
-50
-
-950
-
-20
-
-0
-
-COMPLETED
-
-Estados de cuenta anuales
-
-1.000
-
-723
-
-277
-
-20
-
-0
-
-COMPLETED
-
-Resultados adicionales:
-
-Transacciones: 90 anomalías detectadas.
-
-Intereses: total de intereses calculados de 2.850,00 y total de saldos finales de 420.850,00.
-
-Estados anuales: 20 estados generados, depósitos por 424.100,00, retiros por 329.100,00, compras por 379.800,00, pagos por 46.400,00 y saldo neto anual de -331.200,00.
-
-Las cantidades aceptadas y rechazadas suman 1.000 registros en cada Job, demostrando que todos los datos de entrada fueron leídos y clasificados.
-
-Estructura principal
-
+```text
 src/main/java/cl/duoc/bank_batch
-├── configuration   Jobs, Steps, hilos y políticas compartidas
-├── excepcion       Excepciones de validación
-├── listener        Rechazos, reintentos, métricas y resúmenes
-├── modelo          Modelos de entrada y salida
-├── politica        Política personalizada de omisión
-├── procesador      Validaciones y transformaciones
-├── servicio        Control de reinicios de JobInstance
-└── utilidad        Conversión y validación de fechas
+├── bff
+│   ├── web
+│   │   ├── controlador
+│   │   ├── dto
+│   │   └── servicio
+│   ├── movil
+│   │   ├── controlador
+│   │   ├── dto
+│   │   └── servicio
+│   ├── cajero
+│   │   ├── controlador
+│   │   ├── dto
+│   │   └── servicio
+│   └── compartido
+│       ├── configuracion
+│       ├── excepcion
+│       ├── modelo
+│       └── repositorio
+├── configuration
+├── listener
+├── modelo
+├── politica
+├── procesador
+└── servicio
+```
 
-src/main/resources
-├── data
-│   └── semana_3    Archivos CSV oficiales utilizados
-├── application.properties
-└── schema.sql
+Los paquetes `web`, `movil` y `cajero` representan los límites de cada BFF. `compartido` contiene únicamente infraestructura transversal. Los paquetes batch existentes siguen siendo responsables de cargar y transformar los archivos oficiales.
 
-Configuración de MySQL
+## Endpoints
 
-Crear la base de datos y el usuario desde MySQL Workbench:
+| BFF | Método y endpoint | Propósito |
+|---|---|---|
+| Web | `GET /api/bff/web/cuentas/{cuentaId}` | Vista completa de una cuenta |
+| Web | `GET /api/bff/web/resumen` | Resumen operacional para interfaz compleja |
+| Móvil | `GET /api/bff/movil/cuentas/{cuentaId}` | Inicio liviano de la cuenta |
+| Móvil | `GET /api/bff/movil/cuentas/{cuentaId}/movimientos?limite=5` | Movimientos resumidos; límite entre 1 y 10 |
+| Cajero | `GET /api/bff/cajero/cuentas/{cuentaId}/saldo` | Saldo con cuenta enmascarada |
+| Cajero | `POST /api/bff/cajero/cuentas/{cuentaId}/retiros` | Retiro múltiplo de 1.000, transaccional y auditado |
 
-CREATE DATABASE IF NOT EXISTS bank_batch_db
+Ejemplo del cuerpo de retiro:
+
+```json
+{
+  "monto": 2000
+}
+```
+
+## Datos oficiales: verificación obligatoria
+
+Los archivos incluidos en `src/main/resources/data/semana_3` se compararon byte por byte con `bank_legacy_data-main/data/semana_3` del ZIP oficial entregado para la actividad. Cada uno contiene 1.000 registros más su encabezado.
+
+| Archivo predeterminado | Registros | SHA-256 oficial |
+|---|---:|---|
+| `data/semana_3/cuentas_anuales.csv` | 1.000 | `0690d81fe446affe39857a448ff5590c4f6e6f998150c08934db3aa41683e328` |
+| `data/semana_3/intereses.csv` | 1.000 | `69cc39f468db47e4d752657db95ee9caf00ebcaf31581e45e104c4dc4a5e3120` |
+| `data/semana_3/transacciones.csv` | 1.000 | `9a209c71d5556380481731f0fe9ac148a586a7c91698b377481b62e96341e836` |
+
+Antes de generar evidencia se debe ejecutar desde la raíz del proyecto:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verificar-datos-oficiales.ps1
+```
+
+El proceso debe finalizar con el mensaje:
+
+```text
+VERIFICACIÓN CORRECTA: los tres archivos coinciden con los datos oficiales.
+```
+
+No se debe reemplazar ninguno de estos CSV por datos ampliados o propios para la evidencia evaluada.
+
+## Preparación limpia de MySQL
+
+Para que registros de pruebas anteriores no contaminen la demostración, la configuración predeterminada usa una base exclusiva para esta entrega:
+
+```sql
+CREATE DATABASE bank_batch_semana4_db
 CHARACTER SET utf8mb4
 COLLATE utf8mb4_unicode_ci;
 
-CREATE USER IF NOT EXISTS 'bank_batch_user'@'localhost'
-IDENTIFIED BY 'CAMBIAR_ESTA_PASSWORD';
-
-GRANT ALL PRIVILEGES ON bank_batch_db.*
+GRANT ALL PRIVILEGES ON bank_batch_semana4_db.*
 TO 'bank_batch_user'@'localhost';
 
 FLUSH PRIVILEGES;
+```
 
-La contraseña no se almacena en Git. Debe proporcionarse mediante la variable DB_PASSWORD.
+En cada terminal de PowerShell se configura la misma conexión:
 
-Compilación
+```powershell
+$env:DB_URL="jdbc:mysql://localhost:3306/bank_batch_semana4_db?useSSL=false&serverTimezone=America/Santiago&allowPublicKeyRetrieval=true"
+$env:DB_USER="bank_batch_user"
+$env:DB_PASSWORD="TU_PASSWORD_MYSQL"
+```
 
-Desde PowerShell, dentro de la carpeta que contiene pom.xml:
+Usar una base nueva es preferible a borrar la base de semanas anteriores y deja una evidencia reproducible. `bank_batch_semana4_db` también es el valor predeterminado de `application.properties`; `DB_URL` se fija en las terminales para que la conexión quede explícita durante la demostración.
 
-.\mvnw.cmd clean package -DskipTests
+## Carga de los archivos oficiales con Spring Batch
 
-La compilación genera el archivo ejecutable dentro de target.
+Antes de iniciar los BFF se ejecutan los tres Jobs sobre la base limpia. Cada comando finaliza al terminar el Job porque la aplicación base conserva `spring.main.web-application-type=none`.
 
-Ejecución desde IntelliJ
+En la terminal que ejecutará los Jobs se fijan explícitamente las tres rutas. Esto evita que una variable de entorno conservada de una prueba anterior reemplace los valores oficiales:
 
-En Run > Edit Configurations, seleccionar BankBatchApplication, incorporar las variables correspondientes y utilizar un run.id nuevo como argumento del programa.
+```powershell
+$env:BATCH_ARCHIVO_TRANSACCIONES="data/semana_3/transacciones.csv"
+$env:BATCH_ARCHIVO_INTERESES="data/semana_3/intereses.csv"
+$env:BATCH_ARCHIVO_ESTADOS="data/semana_3/cuentas_anuales.csv"
+```
 
-Transacciones diarias
+### 1. Intereses y cuentas
 
-DB_USER=bank_batch_user;DB_PASSWORD=TU_PASSWORD;BATCH_JOB_NAME=jobTransaccionesDiarias;BATCH_ARCHIVO_TRANSACCIONES=data/semana_3/transacciones.csv;BATCH_HILOS=3;BATCH_CHUNK=50;BATCH_CAPACIDAD_COLA=50;BATCH_ID_PRUEBA=transacciones_h3_c50
+```powershell
+$env:BATCH_JOB_NAME="jobInteresesMensuales"
+.\mvnw.cmd spring-boot:run "-Dspring-boot.run.arguments=run.id=401"
+```
 
-Intereses mensuales
+### 2. Transacciones diarias
 
-DB_USER=bank_batch_user;DB_PASSWORD=TU_PASSWORD;BATCH_JOB_NAME=jobInteresesMensuales;BATCH_ARCHIVO_INTERESES=data/semana_3/intereses.csv;BATCH_HILOS=3;BATCH_CHUNK=50;BATCH_CAPACIDAD_COLA=50;BATCH_ID_PRUEBA=intereses_h3_c50
+```powershell
+$env:BATCH_JOB_NAME="jobTransaccionesDiarias"
+.\mvnw.cmd spring-boot:run "-Dspring-boot.run.arguments=run.id=402"
+```
 
-Estados de cuenta anuales
+### 3. Estados de cuenta anuales
 
-DB_USER=bank_batch_user;DB_PASSWORD=TU_PASSWORD;BATCH_JOB_NAME=jobEstadosCuentaAnuales;BATCH_ARCHIVO_ESTADOS=data/semana_3/cuentas_anuales.csv;BATCH_HILOS=3;BATCH_CHUNK=50;BATCH_CAPACIDAD_COLA=50;BATCH_ID_PRUEBA=estados_h3_c50
+```powershell
+$env:BATCH_JOB_NAME="jobEstadosCuentaAnuales"
+.\mvnw.cmd spring-boot:run "-Dspring-boot.run.arguments=run.id=403"
+```
 
-Argumento de programa de ejemplo:
+En los logs debe verse el `Archivo procesado` con la ruta `data/semana_3/...`, 1.000 lecturas y estado `COMPLETED`. Los resultados conocidos del conjunto oficial son:
 
-run.id=401
+| Job | Leídos | Procesados | Rechazados | Resultado adicional |
+|---|---:|---:|---:|---|
+| Intereses | 1.000 | 50 | 950 | 50 cuentas disponibles para los BFF |
+| Transacciones | 1.000 | 491 | 509 | 90 anomalías detectadas |
+| Estados anuales | 1.000 | 723 | 277 | 20 estados anuales consolidados |
 
-El valor debe cambiarse para iniciar una ejecución completa nueva. Para reiniciar una instancia fallida se conservan exactamente los mismos parámetros.
+La cuenta `106` es válida en el archivo oficial de intereses y se usa en la colección Postman. Antes de realizar retiros su saldo esperado es `12180.00`.
 
-Consultas de verificación
+## Ejecución de los tres BFF
 
-Comparación de configuraciones
+Abra tres terminales. En todas configure `DB_URL`, `DB_USER` y `DB_PASSWORD` como se indicó anteriormente.
 
-SELECT
-    id_prueba,
-    cantidad_hilos,
-    tamano_chunk,
-    COUNT(*) AS ejecuciones,
-    ROUND(AVG(duracion_ms), 2) AS duracion_promedio_ms,
-    ROUND(AVG(registros_por_segundo), 2) AS velocidad_promedio
-FROM metricas_rendimiento_batch
-WHERE nombre_job = 'jobTransaccionesDiarias'
-  AND estado = 'COMPLETED'
-GROUP BY id_prueba, cantidad_hilos, tamano_chunk
-ORDER BY duracion_promedio_ms ASC;
+### Terminal 1: BFF Web
 
-Última ejecución de cada Job
+```powershell
+$env:BFF_WEB_API_KEY="web-local-key"
+.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=web"
+```
 
-WITH ultimas_ejecuciones AS (
-    SELECT
-        ji.JOB_NAME,
-        se.STEP_NAME,
-        se.READ_COUNT,
-        se.WRITE_COUNT,
-        se.READ_SKIP_COUNT + se.PROCESS_SKIP_COUNT
-            + se.WRITE_SKIP_COUNT AS OMISIONES,
-        se.COMMIT_COUNT,
-        se.ROLLBACK_COUNT,
-        se.STATUS,
-        ROW_NUMBER() OVER (
-            PARTITION BY ji.JOB_NAME
-            ORDER BY se.END_TIME DESC
-        ) AS numero
-    FROM BATCH_JOB_INSTANCE ji
-    INNER JOIN BATCH_JOB_EXECUTION je
-        ON ji.JOB_INSTANCE_ID = je.JOB_INSTANCE_ID
-    INNER JOIN BATCH_STEP_EXECUTION se
-        ON je.JOB_EXECUTION_ID = se.JOB_EXECUTION_ID
-)
-SELECT
-    JOB_NAME,
-    STEP_NAME,
-    READ_COUNT,
-    WRITE_COUNT,
-    OMISIONES,
-    COMMIT_COUNT,
-    ROLLBACK_COUNT,
-    STATUS
-FROM ultimas_ejecuciones
-WHERE numero = 1
-ORDER BY JOB_NAME;
+### Terminal 2: BFF Móvil
 
-Verificación de reejecución sin duplicados
+```powershell
+$env:BFF_MOVIL_API_KEY="movil-local-key"
+.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=movil"
+```
 
-SELECT
-    'Movimientos anuales' AS resultado,
-    COUNT(*) AS total_registros,
-    COUNT(DISTINCT cuenta_id, fecha, tipo_movimiento,
-          monto, archivo_origen) AS registros_unicos
-FROM movimientos_anuales_procesados
-WHERE archivo_origen = 'data/semana_3/cuentas_anuales.csv'
+### Terminal 3: BFF Cajero
 
-UNION ALL
+```powershell
+$env:BFF_CAJERO_API_KEY="cajero-local-key"
+.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=cajero"
+```
 
-SELECT
-    'Estados de cuenta',
-    COUNT(*),
-    COUNT(DISTINCT cuenta_id, anio, archivo_origen)
-FROM estados_cuenta_anuales
-WHERE archivo_origen = 'data/semana_3/cuentas_anuales.csv';
+Cada consola debe indicar el nombre del BFF, su puerto, la ruta autorizada y el header requerido. Se debe activar un solo perfil por proceso.
 
-Logs y métricas
+## Pruebas con Postman
 
-Los mensajes se muestran en la consola y se guardan en logs/bank-batch.log. El archivo rota al alcanzar 10 MB y conserva cinco históricos.
+Importe la colección:
 
-Los listeners registran:
+```text
+postman/Banco_XYZ_BFF_Semana4.postman_collection.json
+```
 
-Nombre del Job y del Step.
+La colección ya contiene las URL locales, las claves usadas en los comandos anteriores y la cuenta oficial 106. Ejecute las carpetas en este orden:
 
-Identificador de prueba.
+1. `BFF Web`.
+2. `BFF Móvil`.
+3. `BFF Cajero`.
 
-Hilos y tamaño de chunk.
+Los tests de Postman verifican el estado HTTP, el canal, la forma personalizada de cada respuesta, el máximo de movimientos móviles, el enmascaramiento de la cuenta, la auditoría del retiro y los rechazos 400, 401 y 403.
 
-Duración y registros por segundo.
+Después del retiro, ejecute `sql/evidencia-bff.sql` en MySQL Workbench para verificar la cuenta oficial, la procedencia exacta de los tres datasets y la fila de auditoría del cajero.
 
-Lecturas, escrituras y omisiones.
+## Pruebas automáticas
 
-Commits y rollbacks.
+```powershell
+.\mvnw.cmd clean test
+```
 
-Hilos que participaron.
+Las pruebas unitarias cubren:
 
-Reintentos y rechazos.
+- Respuesta completa para Web.
+- Respuesta esencial y límite de movimientos para Móvil.
+- Enmascaramiento, retiro válido, saldo insuficiente y monto inválido para Cajero.
+- Autenticación con la API key y asignación del rol del canal.
+- Cantidad de registros y SHA-256 de los tres archivos oficiales.
 
-Estado final.
+## Guía exacta de capturas para la entrega
 
-Evidencias generadas
+| N.º | Momento de la captura | Qué debe quedar visible | Criterio respaldado |
+|---:|---|---|---|
+| 1 | Al ejecutar `verificar-datos-oficiales.ps1` | Los tres nombres, 1.000 registros, hashes y `EsOficial=True` | Evidencia inequívoca de datos oficiales |
+| 2 | Final de cada Job batch | Ruta `data/semana_3/...`, lecturas, procesados, rechazados y `COMPLETED` | Origen real de los datos utilizados; confirma que no hubo un override accidental |
+| 3 | MySQL Workbench con consultas 1 y 2 | Cuenta 106 y las tres rutas oficiales almacenadas | Persistencia de los datos oficiales |
+| 4 | Las tres consolas BFF | Perfil/nombre del canal, puerto y ruta autorizada | Estrategia de un backend por frontend |
+| 5 | Respuesta Postman Web | JSON completo con interés, estado anual y movimientos | Personalización Web |
+| 6 | Respuesta Postman Móvil | JSON pequeño sin datos Web adicionales | Personalización Móvil |
+| 7 | Saldo y retiro en Postman | Cuenta enmascarada, referencia y estado `APROBADA` | Personalización y operación crítica Cajero |
+| 8 | Tests negativos de Postman | Respuestas HTTP 400, 401 y 403 | Validación, autenticación y autorización |
+| 9 | MySQL Workbench después del retiro | Registro de `operaciones_cajero` y saldo actualizado | Transacción y auditoría |
+| 10 | Resultado de `mvnw clean test` | Tests ejecutados y `BUILD SUCCESS` | Calidad y funcionamiento del código |
 
-La documentación de la Semana 3 incluye evidencias de:
+No incluya únicamente la grilla de MySQL: en cada evidencia de datos debe aparecer también la consulta o el log que demuestra la ruta del CSV oficial.
 
-Compilación exitosa del proyecto.
+## Evidencia SQL
 
-Ejecución de los tres Jobs con los archivos oficiales.
+El archivo `sql/evidencia-bff.sql` contiene consultas de solo lectura para:
 
-Comparación de configuraciones H1/C5, H3/C5, H3/C25 y H3/C50.
+1. Verificar la cuenta oficial 106.
+2. Mostrar la cantidad y el `archivo_origen` de cada proceso.
+3. Comprobar los retiros auditados por el BFF Cajero.
 
-Persistencia y clasificación de los registros aceptados y rechazados.
+## Funcionalidad Spring Batch conservada
 
-Metadatos COMPLETED, commits y ausencia de rollbacks.
+La Semana 3 continúa disponible sin activar perfiles BFF:
 
-Configuración externalizada de escalamiento y tolerancia a fallos.
+- Tres Jobs y Steps orientados a chunks.
+- Lectores protegidos para procesamiento concurrente.
+- `ItemProcessor` con validaciones y transformaciones.
+- Política personalizada de omisión.
+- Política personalizada de reintento para errores transitorios.
+- Pool de hilos configurable, métricas y reinicio controlado.
+- Consolidación anual posterior al Step paralelo.
 
-Pool real de hilos y políticas personalizadas.
-
-Reejecución controlada sin duplicación de movimientos ni estados de cuenta.
-
-Repositorio
-
-Código fuente del proyecto:
-
-https://github.com/maximilianopalasezze/backend_III.git
-
-Repositorio de los archivos oficiales:
-
-https://github.com/KariVillagran/bank_legacy_data.git
-
-Entrega
-
-La entrega debe incluir en una misma carpeta comprimida:
-
-Código fuente completo.
-
-README.md actualizado.
-
-Informe con las evidencias de ejecución.
-
-La carpeta comprimida debe respetar la nomenclatura indicada en la plataforma de la asignatura.
+Los BFF no vuelven a procesar los CSV: consumen los resultados ya validados y persistidos por Spring Batch. Esta separación permite que la carga masiva y la experiencia de cada frontend evolucionen de manera independiente.
