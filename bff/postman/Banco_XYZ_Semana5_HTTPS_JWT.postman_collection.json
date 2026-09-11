@@ -1,0 +1,870 @@
+{
+  "info": {
+    "name": "Banco XYZ Semana 5 HTTPS y JWT",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Importar el entorno generado localmente y confiar en certificados-locales.pem. Mantener la verificación SSL activa. Ejecutar Web, Móvil y Cajero en ese orden. El retiro modifica el saldo; no repetir toda la colección sin considerar ese efecto."
+  },
+  "variable": [
+    {
+      "key": "webUrl",
+      "value": "https://localhost:8081"
+    },
+    {
+      "key": "webToken",
+      "value": ""
+    },
+    {
+      "key": "webReadToken",
+      "value": ""
+    },
+    {
+      "key": "movilUrl",
+      "value": "https://localhost:8082"
+    },
+    {
+      "key": "movilToken",
+      "value": ""
+    },
+    {
+      "key": "movilReadToken",
+      "value": ""
+    },
+    {
+      "key": "cajeroUrl",
+      "value": "https://localhost:8083"
+    },
+    {
+      "key": "cajeroToken",
+      "value": ""
+    },
+    {
+      "key": "cajeroReadToken",
+      "value": ""
+    },
+    {
+      "key": "cuentaId",
+      "value": "106"
+    }
+  ],
+  "item": [
+    {
+      "name": "BFF Web",
+      "item": [
+        {
+          "name": "Obtener token completo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{webUrl}}/api/auth/token",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"web-demo\",\n  \"password\": \"{{webPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) { pm.collectionVariables.set(\"webToken\", pm.response.json().access_token); }",
+                  "pm.test(\"Token temporal\", () => pm.expect(pm.response.json().expires_in).to.eql(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener token consulta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{webUrl}}/api/auth/token",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"web-consulta\",\n  \"password\": \"{{webReadPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) { pm.collectionVariables.set(\"webReadToken\", pm.response.json().access_token); }",
+                  "pm.test(\"Token temporal\", () => pm.expect(pm.response.json().expires_in).to.eql(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar cuenta",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{webToken}}"
+              }
+            ],
+            "url": "{{webUrl}}/api/bff/web/cuentas/{{cuentaId}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Canal correcto\", () => pm.expect(pm.response.json().canal).to.eql(\"WEB\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resumen completo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{webToken}}"
+              }
+            ],
+            "url": "{{webUrl}}/api/bff/web/resumen",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consulta sin permiso de resumen",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{webReadToken}}"
+              }
+            ],
+            "url": "{{webUrl}}/api/bff/web/resumen",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{webUrl}}/api/bff/web/cuentas/{{cuentaId}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Otra cuenta prohibida",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{webToken}}"
+              }
+            ],
+            "url": "{{webUrl}}/api/bff/web/cuentas/107",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ruta de otro canal prohibida",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{webToken}}"
+              }
+            ],
+            "url": "{{webUrl}}/api/bff/movil/cuentas/106",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "BFF Movil",
+      "item": [
+        {
+          "name": "Obtener token completo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{movilUrl}}/api/auth/token",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"movil-demo\",\n  \"password\": \"{{movilPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) { pm.collectionVariables.set(\"movilToken\", pm.response.json().access_token); }",
+                  "pm.test(\"Token temporal\", () => pm.expect(pm.response.json().expires_in).to.eql(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener token consulta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{movilUrl}}/api/auth/token",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"movil-consulta\",\n  \"password\": \"{{movilReadPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) { pm.collectionVariables.set(\"movilReadToken\", pm.response.json().access_token); }",
+                  "pm.test(\"Token temporal\", () => pm.expect(pm.response.json().expires_in).to.eql(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar cuenta",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{movilToken}}"
+              }
+            ],
+            "url": "{{movilUrl}}/api/bff/movil/cuentas/{{cuentaId}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Canal correcto\", () => pm.expect(pm.response.json().canal).to.eql(\"MOVIL\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cinco movimientos esenciales",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{movilToken}}"
+              }
+            ],
+            "url": "{{movilUrl}}/api/bff/movil/cuentas/{{cuentaId}}/movimientos?limite=5",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Máximo cinco movimientos\", () => pm.expect(pm.response.json().length).to.be.at.most(5));",
+                  "pm.test(\"Campos esenciales\", () => pm.response.json().forEach(m => pm.expect(Object.keys(m).sort()).to.eql([\"fecha\",\"monto\",\"tipo\"])));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Límite superior rechazado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{movilToken}}"
+              }
+            ],
+            "url": "{{movilUrl}}/api/bff/movil/cuentas/{{cuentaId}}/movimientos?limite=11",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{movilUrl}}/api/bff/movil/cuentas/{{cuentaId}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Otra cuenta prohibida",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{movilToken}}"
+              }
+            ],
+            "url": "{{movilUrl}}/api/bff/movil/cuentas/107",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ruta de otro canal prohibida",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{movilToken}}"
+              }
+            ],
+            "url": "{{movilUrl}}/api/bff/web/resumen",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "BFF Cajero",
+      "item": [
+        {
+          "name": "Obtener token completo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{cajeroUrl}}/api/auth/token",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"cajero-demo\",\n  \"password\": \"{{cajeroPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) { pm.collectionVariables.set(\"cajeroToken\", pm.response.json().access_token); }",
+                  "pm.test(\"Token temporal\", () => pm.expect(pm.response.json().expires_in).to.eql(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener token consulta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{cajeroUrl}}/api/auth/token",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"cajero-consulta\",\n  \"password\": \"{{cajeroReadPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) { pm.collectionVariables.set(\"cajeroReadToken\", pm.response.json().access_token); }",
+                  "pm.test(\"Token temporal\", () => pm.expect(pm.response.json().expires_in).to.eql(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar cuenta",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cajeroToken}}"
+              }
+            ],
+            "url": "{{cajeroUrl}}/api/bff/cajero/cuentas/{{cuentaId}}/saldo",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Canal correcto\", () => pm.expect(pm.response.json().canal).to.eql(\"CAJERO\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consulta no permite retiros",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cajeroReadToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{cajeroUrl}}/api/bff/cajero/cuentas/{{cuentaId}}/retiros",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monto\": 2000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Monto inválido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cajeroToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{cajeroUrl}}/api/bff/cajero/cuentas/{{cuentaId}}/retiros",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monto\": 1500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Retiro aprobado EJECUTAR UNA VEZ",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cajeroToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{cajeroUrl}}/api/bff/cajero/cuentas/{{cuentaId}}/retiros",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monto\": 2000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Retiro aprobado\", () => pm.expect(pm.response.json().estado).to.eql(\"APROBADA\"));",
+                  "pm.test(\"Saldo descontado\", () => { const r=pm.response.json(); pm.expect(r.saldoDisponible).to.eql(r.saldoAnterior-r.monto); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{cajeroUrl}}/api/bff/cajero/cuentas/{{cuentaId}}/saldo",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Otra cuenta prohibida",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cajeroToken}}"
+              }
+            ],
+            "url": "{{cajeroUrl}}/api/bff/cajero/cuentas/107/saldo",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ruta de otro canal prohibida",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cajeroToken}}"
+              }
+            ],
+            "url": "{{cajeroUrl}}/api/bff/web/resumen",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Aislamiento de tokens entre servidores",
+      "item": [
+        {
+          "name": "Token Web rechazado por Móvil",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{webToken}}"
+              }
+            ],
+            "url": "{{movilUrl}}/api/bff/movil/cuentas/106",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
