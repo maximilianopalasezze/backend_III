@@ -2,7 +2,7 @@
 
 Esta implementación incorpora tres BFF ejecutables independientes, HTTPS con certificados propios, tokens JWT temporales y permisos específicos por canal. Los BFF acceden a los datos oficiales utilizados en la actividad mediante la base `bank_xyz_semana5_db`.
 
-Consultar `VALIDACION.md`: esta versión nueva requiere compilación y pruebas locales. Las capturas anteriores de HTTP y API keys no acreditan la seguridad nueva.
+`VALIDACION.md` documenta las comprobaciones funcionales, de seguridad y rendimiento realizadas sobre la solución.
 
 ## Estrategia y organización
 
@@ -28,7 +28,9 @@ Las APIs se encuentran separadas por canal y acceden a los datos utilizados por 
 | Móvil | GET | `/api/bff/movil/cuentas/{cuentaId}` | Obtiene información esencial de una cuenta |
 | Móvil | GET | `/api/bff/movil/cuentas/{cuentaId}/movimientos` | Obtiene movimientos reducidos para el canal Móvil |
 | Cajero | GET | `/api/bff/cajero/cuentas/{cuentaId}/saldo` | Consulta el saldo de la cuenta |
-| Cajero | POST | `/api/bff/cajero/cuentas/{cuentaId}/retiros` | Ejecuta un retiro con validaciones de seguridad y saldo |## Seguridad implementada
+| Cajero | POST | `/api/bff/cajero/cuentas/{cuentaId}/retiros` | Ejecuta un retiro con validaciones de seguridad y saldo |
+
+## Seguridad implementada
 
 - HTTPS obligatorio con TLS 1.2 o 1.3, certificado RSA de 3072 bits por canal y HSTS. La aplicación se enlaza a `127.0.0.1` para la demostración local.
 - No se abre un conector HTTP adicional ni se confía en cabeceras `X-Forwarded-Proto` proporcionadas por clientes.
@@ -36,7 +38,7 @@ Las APIs se encuentran separadas por canal y acceden a los datos utilizados por 
 - Tokens de cinco minutos; los permisos y la cuenta se asignan en el servidor. El cliente no puede elegir scopes al autenticarse.
 - Verificación de propiedad de la cuenta 106 y permisos diferenciados para leer, consultar el resumen y retirar.
 - Comparación de contraseñas con BCrypt. Las contraseñas iniciales y claves de firma se generan localmente y no se distribuyen en el código.
-- Las API keys anteriores ya no autentican. Se requiere `Authorization: Bearer <token>`.
+- Las APIs protegidas requieren `Authorization: Bearer <token>`.
 - El retiro mantiene transacción, bloqueo `FOR UPDATE`, comprobación de saldo, múltiplos de 1000 y auditoría.
 
 Es una demostración académica local: sus usuarios están configurados por canal y vinculados a la cuenta 106. La emisión local de JWT no constituye un servidor OAuth2 completo ni un sistema de identidad bancario de producción. Un despliegue real debe usar identidad administrada, usuarios y cuentas reales, y políticas de rotación y revocación.
@@ -111,7 +113,7 @@ HTTPS protege el tramo cliente/BFF. La conexión MySQL predeterminada sigue sien
 
 `POST https://localhost:PUERTO/api/auth/token` recibe `usuario` y `password` en JSON, y devuelve `access_token`, `token_type`, `expires_in` y `scope`. La colección usa las variables generadas; no hace falta copiar contraseñas manualmente. Obtener otro token cuando venza después de cinco minutos. Ocultar el token completo y las contraseñas en las capturas finales.
 
-## Evidencias nuevas
+## Evidencias de ejecución
 
 | Evidencia | Qué debe mostrar |
 | --- | --- |
@@ -158,10 +160,13 @@ Resultado final:
 - `bff-web`: SUCCESS.
 - `bff-movil`: SUCCESS.
 - `bff-cajero`: SUCCESS.
-- `BUILD SUCCESS`.## Entrega final
+- `BUILD SUCCESS`.
+
+## Entrega final
 
 La entrega reúne el código fuente de los tres BFF, README, colección Postman, scripts de ejecución, enlace GitHub y evidencias de funcionamiento. Se excluyen `.local`, `target`, logs, certificados privados y credenciales. El archivo para AVA utiliza la nomenclatura `Exp2_S5_Maximiliano_Palasezze.zip`.
 
 Referencias técnicas: [Spring Security JWT](https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/jwt.html), [Spring Boot y servidores web](https://docs.spring.io/spring-boot/how-to/webserver.html).
+
 
 
