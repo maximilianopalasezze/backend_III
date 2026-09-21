@@ -1,0 +1,587 @@
+{
+  "info": {
+    "name": "Banco XYZ - Semana 6 Spring Cloud",
+    "description": "Config Server, Eureka, 3 microservicios, HTTP Basic con roles, BFF por HTTP/Service Discovery y Resilience4j.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Infraestructura",
+      "item": [
+        {
+          "name": "Config Server - MS CUENTAS",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8888/ms-cuentas/default",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8888",
+              "path": [
+                "ms-cuentas",
+                "default"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Config Server responde 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eureka - Registro de servicios",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8761/eureka/apps",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8761",
+              "path": [
+                "eureka",
+                "apps"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Eureka responde',()=>pm.expect(pm.response.code).to.be.oneOf([200,204]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Seguridad HTTP Basic",
+      "item": [
+        {
+          "name": "MS Cuentas - Sin credenciales = 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8091/api/cuentas/106",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8091",
+              "path": [
+                "api",
+                "cuentas",
+                "106"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 sin autenticacion',()=>pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MS Cuentas - VIEWER = 403",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8091/api/cuentas/106",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8091",
+              "path": [
+                "api",
+                "cuentas",
+                "106"
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{backendViewerUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{backendViewerPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 sin rol SERVICE',()=>pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MS Cuentas - SERVICE = 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8091/api/cuentas/106",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8091",
+              "path": [
+                "api",
+                "cuentas",
+                "106"
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{backendServiceUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{backendServicePassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 con rol SERVICE',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MS Movimientos - SERVICE = 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8092/api/movimientos/cuenta/106?limite=5",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8092",
+              "path": [
+                "api",
+                "movimientos",
+                "cuenta",
+                "106"
+              ],
+              "query": [
+                {
+                  "key": "limite",
+                  "value": "5"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{backendServiceUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{backendServicePassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 movimientos',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - BFF WEB",
+      "item": [
+        {
+          "name": "Obtener token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "https://localhost:8081/api/auth/token",
+              "protocol": "https",
+              "host": [
+                "localhost"
+              ],
+              "port": "8081",
+              "path": [
+                "api",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"usuario\": \"web-demo\", \"password\": \"{{webPassword}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Token web 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200) pm.environment.set('webToken',pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consulta protegida",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://localhost:8081/api/bff/web/cuentas/106",
+              "protocol": "https",
+              "host": [
+                "localhost"
+              ],
+              "port": "8081",
+              "path": [
+                "api",
+                "bff",
+                "web",
+                "cuentas",
+                "106"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{webToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('BFF responde 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - BFF MOVIL",
+      "item": [
+        {
+          "name": "Obtener token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "https://localhost:8082/api/auth/token",
+              "protocol": "https",
+              "host": [
+                "localhost"
+              ],
+              "port": "8082",
+              "path": [
+                "api",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"usuario\": \"movil-demo\", \"password\": \"{{movilPassword}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Token movil 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200) pm.environment.set('movilToken',pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consulta protegida",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://localhost:8082/api/bff/movil/cuentas/106",
+              "protocol": "https",
+              "host": [
+                "localhost"
+              ],
+              "port": "8082",
+              "path": [
+                "api",
+                "bff",
+                "movil",
+                "cuentas",
+                "106"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{movilToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('BFF responde 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - BFF CAJERO",
+      "item": [
+        {
+          "name": "Obtener token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "https://localhost:8083/api/auth/token",
+              "protocol": "https",
+              "host": [
+                "localhost"
+              ],
+              "port": "8083",
+              "path": [
+                "api",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"usuario\": \"cajero-demo\", \"password\": \"{{cajeroPassword}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Token cajero 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200) pm.environment.set('cajeroToken',pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consulta protegida",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://localhost:8083/api/bff/cajero/cuentas/106/saldo",
+              "protocol": "https",
+              "host": [
+                "localhost"
+              ],
+              "port": "8083",
+              "path": [
+                "api",
+                "bff",
+                "cajero",
+                "cuentas",
+                "106",
+                "saldo"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{cajeroToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('BFF responde 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 - Tolerancia a fallos",
+      "description": "Prueba manual: detén MS-MOVIMIENTOS y ejecuta nuevamente la consulta Web. El BFF debe seguir respondiendo 200 y movimientosRecientes debe quedar vacío por el fallback de Resilience4j.",
+      "item": [
+        {
+          "name": "Web con MS-MOVIMIENTOS detenido",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://localhost:8081/api/bff/web/cuentas/106",
+              "protocol": "https",
+              "host": [
+                "localhost"
+              ],
+              "port": "8081",
+              "path": [
+                "api",
+                "bff",
+                "web",
+                "cuentas",
+                "106"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{webToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Respuesta degradada controlada',()=>pm.response.to.have.status(200));",
+                  "pm.test('Fallback deja movimientos vacios',()=>pm.expect(pm.response.json().movimientosRecientes).to.eql([]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "webToken",
+      "value": ""
+    },
+    {
+      "key": "movilToken",
+      "value": ""
+    },
+    {
+      "key": "cajeroToken",
+      "value": ""
+    }
+  ]
+}

@@ -7,6 +7,7 @@ $ErrorActionPreference = 'Stop'
 $raiz = Split-Path $PSScriptRoot -Parent
 $local = Join-Path $raiz '.local'
 $config = Import-Clixml (Join-Path $local 'config.clixml')
+$cloud = Import-Clixml (Join-Path $local 'semana6.clixml')
 $item = $config[$Canal]
 function Texto-Secreto($valor) { return [System.Net.NetworkCredential]::new('', $valor).Password }
 $env:BFF_TLS_STORE = 'file:' + (Join-Path $local "$Canal.p12").Replace('\','/')
@@ -17,6 +18,8 @@ $env:BFF_READ_PASSWORD = Texto-Secreto $item.consulta
 $env:DB_URL=$DbUrl
 $env:DB_USER=$DbUsuario
 $env:DB_PASSWORD = Texto-Secreto (Read-Host "Contrasena MySQL de $DbUsuario" -AsSecureString)
+$env:BACKEND_BASIC_USER=$cloud.serviceUser
+$env:BACKEND_BASIC_PASSWORD=Texto-Secreto $cloud.servicePassword
 $java = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin\java.exe' } else { (Get-Command java -ErrorAction Stop).Source }
 $jar = Join-Path $raiz "bff\bff-$Canal\target\bff-$Canal-0.0.1-SNAPSHOT.jar"
 if (!(Test-Path $jar)) { throw 'Falta el JAR. Ejecuta primero el comando clean package del README.' }

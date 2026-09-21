@@ -3,15 +3,44 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId>
-    <version>4.1.0</version><relativePath/>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.5.10</version>
+    <relativePath/>
   </parent>
-  <groupId>cl.duoc.bff</groupId><artifactId>bank-bff-parent</artifactId>
-  <version>0.0.1-SNAPSHOT</version><packaging>pom</packaging>
-  <name>Banco XYZ BFF</name>
-  <properties><java.version>17</java.version></properties>
+  <groupId>cl.duoc.bff</groupId>
+  <artifactId>bank-cloud-parent</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>Banco XYZ - Spring Cloud Semana 6</name>
+
+  <properties>
+    <java.version>17</java.version>
+    <spring-cloud.version>2025.0.1</spring-cloud.version>
+    <resilience4j.version>2.3.0</resilience4j.version>
+  </properties>
+
   <modules>
-    <module>bff-compartido</module><module>bff-web</module>
-    <module>bff-movil</module><module>bff-cajero</module>
+    <module>bff-compartido</module>
+    <module>config-server</module>
+    <module>discovery-server</module>
+    <module>ms-cuentas</module>
+    <module>ms-movimientos</module>
+    <module>ms-operaciones</module>
+    <module>bff-web</module>
+    <module>bff-movil</module>
+    <module>bff-cajero</module>
   </modules>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 </project>

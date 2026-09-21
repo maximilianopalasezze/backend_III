@@ -20,6 +20,15 @@ public class ManejadorErroresBff {
         return construir(HttpStatus.NOT_FOUND, excepcion.getMessage(), solicitud);
     }
 
+
+    @ExceptionHandler(ServicioBackendNoDisponibleException.class)
+    public ResponseEntity<RespuestaErrorApi> manejarBackendNoDisponible(
+            ServicioBackendNoDisponibleException excepcion,
+            HttpServletRequest solicitud) {
+
+        return construir(HttpStatus.SERVICE_UNAVAILABLE, excepcion.getMessage(), solicitud);
+    }
+
     @ExceptionHandler(SaldoInsuficienteException.class)
     public ResponseEntity<RespuestaErrorApi> manejarSaldoInsuficiente(
             SaldoInsuficienteException excepcion,
