@@ -52,3 +52,13 @@ certificados-postman/
 *.key
 *.clixml
 *.bak
+
+### Semana 7 local ###
+infra/*.sql
+infra/*.bak
+
+!evidencias/
+evidencias/*
+!evidencias/semana7/
+!evidencias/semana7/**
+evidencias/semana7/logs/
