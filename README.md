@@ -1,205 +1,428 @@
-# Banco XYZ - Desarrollo Backend III - Semana 6
+# Banco XYZ - Desarrollo Backend III - Semana 8
 
-Implementación de la actividad **"Implementando microservicios y seguridad en la nube con Spring Cloud"**. La solución continúa el trabajo de Semana 5 y corrige la observación docente principal: los BFF ya **no acceden directamente a MySQL**. Ahora consumen servicios Backend reales mediante HTTP, nombres lógicos de Eureka y un `RestTemplate` balanceado.
+Implementación final de la actividad de **Semana 8**, integrando autenticación OAuth2, BFF protegidos, microservicios Spring Cloud, tolerancia a fallos, mensajería asíncrona con Kafka y despliegue mediante Docker Compose.
 
-## Arquitectura
+La solución continúa el trabajo de las semanas anteriores y consolida todos los componentes en una arquitectura distribuida y reproducible.
+
+## Arquitectura general
 
 ```text
-                         CONFIG SERVER :8888
-                         bff/config-repo
-                                |
-                                v
-                         EUREKA SERVER :8761
-                                |
-        +-----------------------+-----------------------+
-        |                       |                       |
-  MS-CUENTAS :8091      MS-MOVIMIENTOS :8092    MS-OPERACIONES :8093
-        |                       |                       |
-        +-----------------------+-----------------------+
-                                ^
-                 HTTP + @LoadBalanced RestTemplate
-                       + Resilience4j
-                                |
-          +---------------------+---------------------+
-          |                     |                     |
-    BFF WEB :8081        BFF MOVIL :8082       BFF CAJERO :8083
-       HTTPS/JWT             HTTPS/JWT              HTTPS/JWT
+                            POSTMAN / CLIENTES
+                                   |
+                                   | OAuth2 client_credentials
+                                   v
+                         AUTH SERVER :9000
+                         Emisión de JWT Bearer
+                                   |
+              +--------------------+--------------------+
+              |                    |                    |
+              v                    v                    v
+        BFF WEB :8081       BFF MÓVIL :8082      BFF CAJERO :8083
+        HTTPS + OAuth2      HTTPS + OAuth2        HTTPS + OAuth2
+              |                    |                    |
+              +--------------------+--------------------+
+                                   |
+                         Eureka + Config Server
+                         :8761        :8888
+                                   |
+              +--------------------+--------------------+
+              |                    |                    |
+              v                    v                    v
+       MS-CUENTAS :8091   MS-MOVIMIENTOS :8092  MS-OPERACIONES :8093
+              |                    |                    |
+              +--------------------+--------------------+
+                                   |
+                                MySQL :3306
+
+                         MS-OPERACIONES
+                               |
+                               v
+                        Apache Kafka :9092
+                               |
+             +-----------------+-----------------+
+             |                 |                 |
+             v                 v                 v
+   movimientos.creados  operaciones.procesadas  operaciones.fallidas
+                                              (DLQ)
+
+                         Kafka UI :8090
 ```
 
-### Componentes
+Toda la solución se ejecuta dentro de una instancia AWS EC2 mediante **Docker Compose**.
 
-| Módulo | Responsabilidad |
+## Componentes principales
+
+| Componente | Responsabilidad |
 | --- | --- |
-| `config-server` | Configuración centralizada con Spring Cloud Config, puerto 8888 |
-| `config-repo` | Configuración externa de microservicios y BFF |
-| `discovery-server` | Service Discovery con Netflix Eureka, puerto 8761 |
-| `ms-cuentas` | Cuenta, interés, estado anual y resumen operacional, puerto 8091 |
-| `ms-movimientos` | Movimientos bancarios, puerto 8092 |
-| `ms-operaciones` | Retiros transaccionales y auditoría, puerto 8093 |
-| `bff-web` | Contrato completo Web, HTTPS 8081 |
-| `bff-movil` | Contrato reducido Móvil, HTTPS 8082 |
-| `bff-cajero` | Saldo y retiro Cajero, HTTPS 8083 |
-| `bff-compartido` | JWT, DTO comunes, cliente HTTP balanceado y Resilience4j |
+| `auth-server` | Authorization Server OAuth2, puerto 9000 |
+| `config-server` | Configuración centralizada, puerto 8888 |
+| `discovery-server` | Service Discovery con Eureka, puerto 8761 |
+| `ms-cuentas` | Información de cuentas y resumen bancario, puerto 8091 |
+| `ms-movimientos` | Consulta de movimientos y consumo de eventos Kafka, puerto 8092 |
+| `ms-operaciones` | Retiros y publicación de eventos, puerto 8093 |
+| `bff-web` | Contrato Web, HTTPS 8081 |
+| `bff-movil` | Contrato Móvil, HTTPS 8082 |
+| `bff-cajero` | Saldo y retiros de Cajero, HTTPS 8083 |
+| `mysql` | Persistencia de datos |
+| `kafka` | Mensajería asíncrona |
+| `kafka-ui` | Inspección visual de topics y consumidores |
 
-## Corrección aplicada respecto a Semana 5
+## OAuth2 y seguridad
 
-Antes:
+Se implementó un Authorization Server real con Spring Authorization Server.
 
-```text
-BFF -> JdbcTemplate -> MySQL
-```
-
-Semana 6:
+Flujo utilizado:
 
 ```text
-BFF -> RestTemplate @LoadBalanced -> Eureka -> Microservicio Backend -> JdbcTemplate -> MySQL
+client_credentials
 ```
 
-El acceso JDBC queda dentro de `ms-cuentas`, `ms-movimientos` y `ms-operaciones`. Los BFF no contienen datasource ni driver MySQL.
+Clientes registrados:
 
-## Spring Cloud Config
+- `bff-web`
+- `bff-movil`
+- `bff-cajero`
 
-`config-server` usa perfil `native` y lee `bff/config-repo`. Las aplicaciones cliente conservan localmente solo su nombre y el import del Config Server:
-
-```properties
-spring.application.name=ms-cuentas
-spring.config.import=optional:configserver:http://localhost:8888
-```
-
-La configuración central contiene puertos, Eureka, datasource, seguridad interna, SSL/JWT de los BFF y parámetros de Resilience4j.
-
-Prueba:
+Scopes configurados:
 
 ```text
-http://localhost:8888/ms-cuentas/default
+web:lectura
+web:resumen
+movil:lectura
+cajero:lectura
+cajero:retiro
 ```
 
-## Service Discovery
+Los access tokens son JWT firmados con RSA y contienen información adicional de seguridad:
 
-Eureka se ejecuta en:
+- `aud`
+- `canal`
+- `cuentaId`
+- `scope`
+- `iss`
+
+Los BFF funcionan como OAuth2 Resource Server y validan el token mediante el JWK Set del Authorization Server.
+
+Comportamientos validados:
+
+- Sin token o token inválido: **401 Unauthorized**.
+- Token válido sin scope requerido: **403 Forbidden**.
+- Token y scope correctos: **200 OK**.
+
+Los tres BFF mantienen HTTPS con certificados PKCS12 generados localmente.
+
+## Contratos por canal
+
+### Web
+
+El BFF Web entrega información ampliada de la cuenta, resumen e historial de movimientos.
+
+### Móvil
+
+El BFF Móvil entrega una respuesta reducida y limita la cantidad de movimientos consultados.
+
+### Cajero
+
+El BFF Cajero permite consultar saldo y realizar retiros. La cuenta se entrega enmascarada y el monto de retiro debe ser múltiplo de 1000 CLP.
+
+## Spring Cloud Config y Eureka
+
+El Config Server centraliza parámetros de los servicios y BFF.
+
+Eureka permite el descubrimiento dinámico de:
+
+- AUTH-SERVER
+- BANK-BFF-WEB
+- BANK-BFF-MOVIL
+- BANK-BFF-CAJERO
+- MS-CUENTAS
+- MS-MOVIMIENTOS
+- MS-OPERACIONES
+
+La comunicación BFF -> Backend utiliza nombres lógicos mediante `RestTemplate @LoadBalanced`, evitando dependencias directas de IP o puerto.
+
+## Resilience4j
+
+Las llamadas entre BFF y microservicios están protegidas con:
+
+- Circuit Breaker.
+- Retry.
+- Fallbacks controlados.
+
+Servicios configurados:
+
+- `cuentasService`
+- `movimientosService`
+- `operacionesService`
+
+Ejemplos de comportamiento:
+
+- Si `MS-MOVIMIENTOS` falla, el BFF puede degradar la respuesta a una lista vacía.
+- Si `MS-CUENTAS` no está disponible, se devuelve un error controlado 503.
+- Las excepciones de negocio se excluyen del conteo de fallos de infraestructura.
+
+## Kafka y procesamiento asíncrono
+
+Apache Kafka se ejecuta en el puerto 9092.
+
+Topics utilizados:
 
 ```text
-http://localhost:8761
+movimientos.creados
+operaciones.procesadas
+operaciones.fallidas
 ```
 
-Los tres servicios Backend y los tres BFF se registran automáticamente. La comunicación no usa URLs fijas con puertos; el cliente compartido llama por nombre:
+Flujo principal:
 
-```java
-http://MS-CUENTAS/...
-http://MS-MOVIMIENTOS/...
-http://MS-OPERACIONES/...
+```text
+BFF CAJERO
+   |
+   v
+MS-OPERACIONES
+   |
+   v
+operaciones.procesadas
+   |
+   v
+MS-MOVIMIENTOS
 ```
 
-## Tolerancia a fallos
+`MS-OPERACIONES` publica eventos de retiro procesado.
 
-`ClienteServiciosBanco` protege las llamadas salientes con Resilience4j:
+`MS-MOVIMIENTOS` consume los eventos mediante el grupo:
 
-- `cuentasService`: Circuit Breaker + Retry.
-- `movimientosService`: Circuit Breaker + Retry + fallback a lista vacía.
-- `operacionesService`: Circuit Breaker + Retry + error controlado 503 si el servicio no está disponible.
+```text
+ms-movimientos-group
+```
 
-La configuración del circuito está centralizada en `config-repo/application.properties`.
+Para demostrar tolerancia a fallos se configuraron reintentos automáticos y Dead Letter Queue:
 
-Prueba visual recomendada: detener `ms-movimientos` y consultar nuevamente la cuenta Web. El BFF debe mantener respuesta `200` y entregar `movimientosRecientes: []`, demostrando degradación controlada en vez de fallo en cascada.
+- 2 reintentos.
+- Espera de 2 segundos entre intentos.
+- Evento no procesable enviado a `operaciones.fallidas`.
 
-## Autenticación y autorización
+Kafka UI permite visualizar topics, mensajes, consumer groups y lag.
 
-### Entre BFF y microservicios Backend
+## Docker y Docker Compose
 
-Los tres microservicios usan **Spring Security + HTTP Basic + roles**, alineado con el ejemplo de Semana 6:
+Cada aplicación Java posee su propio Dockerfile.
 
-- `ROLE_SERVICE`: puede acceder a `/api/**`.
-- `ROLE_VIEWER`: usuario válido, pero no autorizado para `/api/**`; permite demostrar `403`.
-- Sin credenciales: `401`.
+Imágenes construidas:
 
-Las credenciales fuente se generan localmente mediante
-`scripts/preparar-semana6.ps1` y se almacenan protegidas mediante
-Windows en `.local`. El mismo script genera un entorno local de Postman
-con las variables necesarias para las pruebas. Toda la carpeta `.local`
-está excluida de Git y no forma parte de la entrega.
+- `banco-xyz/config-server:semana8`
+- `banco-xyz/discovery-server:semana8`
+- `banco-xyz/auth-server:semana8`
+- `banco-xyz/ms-cuentas:semana8`
+- `banco-xyz/ms-movimientos:semana8`
+- `banco-xyz/ms-operaciones:semana8`
+- `banco-xyz/bff-web:semana8`
+- `banco-xyz/bff-movil:semana8`
+- `banco-xyz/bff-cajero:semana8`
 
-### Cliente -> BFF
+El archivo principal de orquestación es:
 
-Se conserva la seguridad funcional de Semana 5: HTTPS + JWT, scopes por canal y autorización por cuenta.
+```text
+infra/docker-compose.yml
+```
+
+Incluye:
+
+- Health checks.
+- Dependencias condicionadas por estado saludable.
+- Variables de entorno.
+- Volúmenes persistentes.
+- Inicialización automática de topics Kafka.
+- Persistencia MySQL.
+- Montaje de certificados TLS.
+- Arranque coordinado de todos los servicios.
+
+## Variables de entorno
+
+El repositorio no contiene credenciales reales.
+
+Usar como plantilla:
+
+```text
+env.docker.example
+```
+
+y crear localmente:
+
+```text
+.env.docker.local
+```
+
+Variables requeridas:
+
+```text
+MYSQL_ROOT_PASSWORD
+DB_PASSWORD
+BACKEND_BASIC_PASSWORD
+BFF_TLS_PASSWORD
+OAUTH_WEB_SECRET
+OAUTH_MOVIL_SECRET
+OAUTH_CAJERO_SECRET
+```
+
+Los archivos sensibles, certificados y secretos locales están excluidos mediante `.gitignore`.
+
+## Certificados TLS
+
+Los certificados de los BFF no se versionan.
+
+Para generarlos:
+
+```bash
+./infra/generar-tls.sh
+```
+
+Se generan:
+
+```text
+bff/tls/web.p12
+bff/tls/movil.p12
+bff/tls/cajero.p12
+```
 
 ## Base de datos
 
-Se reutiliza la base preparada en las semanas anteriores:
+La base utilizada es:
 
 ```text
 bank_xyz_semana5_db
 ```
 
-Los BFF no se conectan a ella. Solo los microservicios Backend usan JDBC.
-
-## Compilar
-
-Requisito: Java 17.
-
-Desde la raíz `backend_III`:
-
-```powershell
-.\bff\mvnw.cmd -f .\bff\pom.xml clean package
-```
-
-El wrapper está fijado a Maven 3.9.11. Antes de continuar debe aparecer `BUILD SUCCESS`.
-
-## Preparación local
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\preparar-semana6.ps1
-```
-
-El script conserva/genera los certificados y secretos BFF, genera las credenciales HTTP Basic internas y crea:
+El dump reproducible se encuentra en:
 
 ```text
-.local\Semana6_Cloud_Local.postman_environment.json
+infra/bank_xyz_semana5_db.sql
 ```
 
-## Iniciar toda la Semana 6
+Los BFF no acceden directamente a MySQL. El acceso JDBC queda encapsulado en los microservicios Backend.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\iniciar-semana6.ps1
-```
+## Compilación
 
-Se solicita una vez la contraseña MySQL y luego se abren ventanas separadas para:
-
-1. Config Server.
-2. Eureka.
-3. MS Cuentas.
-4. MS Movimientos.
-5. MS Operaciones.
-6. BFF Web.
-7. BFF Móvil.
-8. BFF Cajero.
-
-## Postman
-
-Importar:
+Requisito:
 
 ```text
-bff/postman/Banco_XYZ_Semana6_Cloud.postman_collection.json
-.local/Semana6_Cloud_Local.postman_environment.json
+Java 17
 ```
 
-Para HTTPS de los BFF conservar la configuración de certificados usada en Semana 5.
+Desde la carpeta `bff`:
 
-La colección contiene evidencias para Config Server, Eureka, `401`, `403`, `200`, BFF y tolerancia a fallos.
+```bash
+./mvnw clean package -DskipTests
+```
 
-## Evidencias para la entrega
+La compilación debe finalizar con:
 
-Revisar `GUIA_CAPTURAS_SEMANA6.md`. Las evidencias principales son:
+```text
+BUILD SUCCESS
+```
 
-- `BUILD SUCCESS`.
-- Config Server respondiendo configuración externa.
-- Eureka con al menos `MS-CUENTAS`, `MS-MOVIMIENTOS` y `MS-OPERACIONES` en `UP`.
-- `401` sin autenticación.
-- `403` con usuario `VIEWER`.
-- `200` con usuario `SERVICE`.
-- BFF consumiendo servicios Backend por Eureka.
-- Resilience4j funcionando con `ms-movimientos` detenido.
-- Tres BFF funcionando con sus contratos diferenciados.
+## Ejecución con Docker Compose
 
-## Entrega
+Desde `infra`:
 
-Código, README, Postman y evidencias deben quedar en una misma carpeta antes de comprimir. No incluir `.local`, contraseñas, certificados privados, `target` ni logs.
+```bash
+docker compose --env-file ../.env.docker.local up -d
+```
+
+Verificación:
+
+```bash
+docker compose --env-file ../.env.docker.local ps -a
+```
+
+Los servicios principales deben quedar en estado `healthy`.
+
+`kafka-init` debe finalizar correctamente con:
+
+```text
+Exited (0)
+```
+
+## Pruebas principales
+
+### Obtener token OAuth2
+
+```text
+POST http://localhost:9000/oauth2/token
+```
+
+Ejemplo Web:
+
+```text
+grant_type=client_credentials
+scope=web:lectura web:resumen
+```
+
+### Consulta protegida Web
+
+```text
+GET https://localhost:8081/api/bff/web/cuentas/102
+```
+
+Resultado esperado:
+
+```text
+200 OK
+```
+
+### Retiro Cajero
+
+```text
+POST https://localhost:8083/api/bff/cajero/cuentas/102/retiros
+```
+
+Body:
+
+```json
+{
+  "monto": 1000
+}
+```
+
+Resultado esperado:
+
+```text
+200 OK
+estado: APROBADA
+```
+
+Luego el evento puede verificarse en:
+
+```text
+operaciones.procesadas
+```
+
+## Evidencias de la entrega
+
+Las pruebas realizadas demuestran:
+
+- Compilación Maven exitosa.
+- Authorization Server OAuth2 operativo.
+- Respuestas 200, 401 y 403.
+- HTTPS en los tres BFF.
+- Servicios registrados en Eureka.
+- Configuración centralizada.
+- Comunicación por Service Discovery.
+- Circuit Breaker, Retry y fallback.
+- Dockerización de todos los módulos.
+- Orquestación mediante Docker Compose.
+- MySQL persistente.
+- Kafka operativo.
+- Publicación y consumo de eventos.
+- Consumer group con lag controlado.
+- Reintentos y DLQ.
+- Retiro real Cajero -> Kafka.
+- Rama final publicada en GitHub.
+
+## Rama de entrega
+
+```text
+semana8-oauth-docker
+```
+
+Esta rama contiene la implementación final correspondiente a la Semana 8.
