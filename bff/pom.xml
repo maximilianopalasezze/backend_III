@@ -22,6 +22,7 @@
 
   <modules>
     <module>bff-compartido</module>
+    <module>auth-server</module>
     <module>config-server</module>
     <module>discovery-server</module>
     <module>ms-cuentas</module>

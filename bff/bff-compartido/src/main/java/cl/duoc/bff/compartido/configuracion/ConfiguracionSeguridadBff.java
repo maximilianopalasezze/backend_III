@@ -1,6 +1,5 @@
 package cl.duoc.bff.compartido.configuracion;
 
-import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -9,73 +8,196 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.core.*;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
-import org.springframework.security.oauth2.jwt.*;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import java.util.Base64;
-import java.time.Duration;
 
 @Configuration
 @EnableMethodSecurity
 @EnableConfigurationProperties(PropiedadesBff.class)
 public class ConfiguracionSeguridadBff {
+
     @Bean
-    public SecretKey claveJwt(PropiedadesBff p) {
-        byte[] bytes=Base64.getDecoder().decode(p.jwtSecret());
-        if(bytes.length<32) throw new IllegalArgumentException("La clave JWT debe tener al menos 256 bits");
-        return new SecretKeySpec(bytes,"HmacSHA256");
-    }
-    @Bean
-    public JwtEncoder jwtEncoder(SecretKey clave) {
-        return new NimbusJwtEncoder(new ImmutableSecret<>(clave));
-    }
-    @Bean
-    public JwtDecoder jwtDecoder(SecretKey clave, PropiedadesBff p) {
-        var decoder=NimbusJwtDecoder.withSecretKey(clave).macAlgorithm(MacAlgorithm.HS256).build();
-        OAuth2TokenValidator<Jwt> claims = jwt -> {
-            boolean ok=jwt.getExpiresAt()!=null && jwt.getIssuedAt()!=null
-                    && jwt.getSubject()!=null && !jwt.getSubject().isBlank()
-                    && jwt.getAudience().contains(p.audience())
-                    && p.canal().name().equals(jwt.getClaimAsString("canal"))
-                    && jwt.getClaimAsString("cuentaId")!=null;
-            return ok ? OAuth2TokenValidatorResult.success() : OAuth2TokenValidatorResult.failure(
-                    new OAuth2Error("invalid_token","Token no válido para este canal",null));
+    JwtDecoder jwtDecoder(PropiedadesBff p) {
+
+        NimbusJwtDecoder decoder =
+                NimbusJwtDecoder.withJwkSetUri(
+                        p.jwkSetUri()
+                ).build();
+
+        OAuth2TokenValidator<Jwt> issuerValidator =
+                JwtValidators.createDefaultWithIssuer(
+                        p.issuer()
+                );
+
+        OAuth2TokenValidator<Jwt> claimsValidator = jwt -> {
+
+            boolean audienceOk =
+                    jwt.getAudience().contains(
+                            p.audience()
+                    );
+
+            boolean canalOk =
+                    p.canal().name().equals(
+                            jwt.getClaimAsString("canal")
+                    );
+
+            String cuentaId =
+                    jwt.getClaimAsString("cuentaId");
+
+            boolean cuentaOk =
+                    cuentaId != null &&
+                    !cuentaId.isBlank();
+
+            if (audienceOk && canalOk && cuentaOk) {
+                return OAuth2TokenValidatorResult.success();
+            }
+
+            return OAuth2TokenValidatorResult.failure(
+                    new OAuth2Error(
+                            "invalid_token",
+                            "Token OAuth2 no válido para este canal",
+                            null
+                    )
+            );
         };
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-                new JwtTimestampValidator(Duration.ZERO), new JwtIssuerValidator(p.issuer()), claims));
+
+        decoder.setJwtValidator(
+                new DelegatingOAuth2TokenValidator<>(
+                        issuerValidator,
+                        claimsValidator
+                )
+        );
+
         return decoder;
     }
+
     @Bean
-    public SecurityFilterChain cadenaSeguridadBff(HttpSecurity http, PropiedadesBff p) throws Exception {
-        String canal=p.canal().name().toLowerCase();
-        String base="/api/bff/"+canal;
-        http.addFilterBefore(new FiltroHttps(), org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class)
-            .csrf(c -> c.disable())
-            .sessionManagement(c -> c.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .requestCache(c -> c.disable())
-            .formLogin(c -> c.disable()).httpBasic(c -> c.disable()).logout(c -> c.disable())
-            .headers(c -> c.httpStrictTransportSecurity(h -> h.maxAgeInSeconds(31536000).includeSubDomains(false)))
-            .authorizeHttpRequests(a -> a
-                .requestMatchers(HttpMethod.POST,"/api/auth/token").permitAll()
-                .requestMatchers(HttpMethod.GET,base+"/resumen").hasAuthority("SCOPE_"+canal+":resumen")
-                .requestMatchers(HttpMethod.GET,base+"/cuentas/**").hasAuthority("SCOPE_"+canal+":lectura")
-                .requestMatchers(HttpMethod.POST,base+"/cuentas/*/retiros").hasAuthority("SCOPE_cajero:retiro")
-                .anyRequest().denyAll())
-            .exceptionHandling(e -> e
-                .authenticationEntryPoint((req,res,ex)->error(res,401,"Token ausente o inválido"))
-                .accessDeniedHandler((req,res,ex)->error(res,403,"Permisos insuficientes")))
-            .oauth2ResourceServer(o -> o.jwt(j -> {})
-                .authenticationEntryPoint((req,res,ex)->error(res,401,"Token ausente o inválido"))
-                .accessDeniedHandler((req,res,ex)->error(res,403,"Permisos insuficientes")));
+    SecurityFilterChain cadenaSeguridadBff(
+            HttpSecurity http,
+            PropiedadesBff p) throws Exception {
+
+        String canal =
+                p.canal().name().toLowerCase();
+
+        String base =
+                "/api/bff/" + canal;
+
+        http
+                .addFilterBefore(
+                        new FiltroHttps(),
+                        BearerTokenAuthenticationFilter.class
+                )
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
+                .requestCache(cache -> cache.disable())
+                .formLogin(form -> form.disable())
+                .httpBasic(basic -> basic.disable())
+                .logout(logout -> logout.disable())
+                .authorizeHttpRequests(auth -> auth
+
+                        .requestMatchers(
+                                "/actuator/health",
+                                "/actuator/info"
+                        ).permitAll()
+
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                base + "/resumen"
+                        ).hasAuthority(
+                                "SCOPE_" + canal + ":resumen"
+                        )
+
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                base + "/cuentas/**"
+                        ).hasAuthority(
+                                "SCOPE_" + canal + ":lectura"
+                        )
+
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                base + "/cuentas/*/retiros"
+                        ).hasAuthority(
+                                "SCOPE_cajero:retiro"
+                        )
+
+                        .anyRequest().denyAll()
+                )
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(
+                                (req, res, error) ->
+                                        responderError(
+                                                res,
+                                                401,
+                                                "Token OAuth2 ausente o inválido"
+                                        )
+                        )
+                        .accessDeniedHandler(
+                                (req, res, error) ->
+                                        responderError(
+                                                res,
+                                                403,
+                                                "Scope OAuth2 insuficiente"
+                                        )
+                        )
+                )
+                .oauth2ResourceServer(oauth ->
+                        oauth
+                                .jwt(jwt -> {
+                                })
+                                .authenticationEntryPoint(
+                                        (req, res, error) ->
+                                                responderError(
+                                                        res,
+                                                        401,
+                                                        "Token OAuth2 ausente o inválido"
+                                                )
+                                )
+                                .accessDeniedHandler(
+                                        (req, res, error) ->
+                                                responderError(
+                                                        res,
+                                                        403,
+                                                        "Scope OAuth2 insuficiente"
+                                                )
+                                )
+                );
+
         return http.build();
     }
-    private static void error(HttpServletResponse res,int status,String message) throws java.io.IOException {
-        res.setStatus(status);res.setContentType("application/json");res.setCharacterEncoding("UTF-8");
-        res.setHeader("Cache-Control","no-store");
-        if(status==401) res.setHeader("WWW-Authenticate","Bearer");
-        res.getWriter().write("{\"estado\":"+status+",\"mensaje\":\""+message+"\"}");
+
+    private static void responderError(
+            HttpServletResponse res,
+            int status,
+            String mensaje) throws java.io.IOException {
+
+        res.setStatus(status);
+        res.setContentType("application/json");
+        res.setCharacterEncoding("UTF-8");
+        res.setHeader("Cache-Control", "no-store");
+
+        if (status == 401) {
+            res.setHeader(
+                    "WWW-Authenticate",
+                    "Bearer"
+            );
+        }
+
+        res.getWriter().write(
+                "{\"estado\":" + status +
+                ",\"mensaje\":\"" + mensaje + "\"}"
+        );
     }
 }

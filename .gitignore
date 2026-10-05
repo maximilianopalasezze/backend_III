@@ -62,3 +62,6 @@ evidencias/*
 !evidencias/semana7/
 !evidencias/semana7/**
 evidencias/semana7/logs/
+
+# Dump reproducible de la BD requerido por Docker Compose
+!infra/bank_xyz_semana5_db.sql
