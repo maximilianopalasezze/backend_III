@@ -50,6 +50,12 @@ La solución continúa el trabajo de las semanas anteriores y consolida todos lo
 
 Toda la solución se ejecuta dentro de una instancia AWS EC2 mediante **Docker Compose**.
 
+### Diagrama visual
+
+El diagrama de arquitectura de la entrega se encuentra en:
+
+[Ver diagrama de arquitectura Semana 8](docs/semana8/arquitectura-semana8.svg)
+
 ## Componentes principales
 
 | Componente | Responsabilidad |
