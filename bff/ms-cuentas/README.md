@@ -46,8 +46,38 @@ En Postman configurar Basic Auth con el usuario y contraseña de servicio defini
 
 Cierre, mantenimiento y retiro bloquean primero la misma fila de `cuentas` con `SELECT ... FOR UPDATE` dentro de una transacción. El estado se consulta después mediante una lectura bloqueante para evitar un estado antiguo bajo REPEATABLE READ. Una operación concurrente termina antes de decidir el cierre; una cuenta ya cerrada rechaza retiros con 409 sin cambiar saldo ni registrar operación. El BFF Web incluye el estado en `producto.estado`.
 
-`GestionCuentasTests` comprueba persistencia, saldo, duplicados, restricciones del cierre, compatibilidad con cuentas previas, errores por inexistencia y bloqueo concurrente. `EstadoCuentaRetiroTests`, en MS-OPERACIONES, usa el repositorio y servicio reales para comprobar retiros de cuentas cerradas, cuentas previas y saldo insuficiente. Las pruebas de seguridad ejercitan además apertura y cierre protegidos y validación de solicitudes. H2 se utiliza como base aislada de pruebas; la evidencia MySQL se recoge durante la validación local.
+`GestionCuentasTests` comprueba persistencia, saldo, duplicados, restricciones del cierre, compatibilidad con cuentas previas, errores por inexistencia y bloqueo concurrente. `EstadoCuentaRetiroTests`, en MS-OPERACIONES, usa el repositorio y servicio reales para comprobar retiros de cuentas cerradas, cuentas previas y saldo insuficiente. Las pruebas de seguridad ejercitan además apertura y cierre protegidos y validación de solicitudes. H2 se utiliza como base aislada de pruebas; los resultados MySQL observados se detallan a continuación.
 
-Verificación de desarrollo con Java 17 y Maven: `verify` terminó correctamente para MS-CUENTAS, MS-OPERACIONES, los tres BFF y el módulo compartido. Se aprobaron 27 pruebas, con cero fallas y errores. En PC, el reactor completo también terminó con `BUILD SUCCESS` y todos los módulos en `SUCCESS`. La tabla de estado se creó en MySQL; falta validar allí los contratos de gestión.
+Verificación de desarrollo con Java 17 y Maven: `verify` terminó correctamente para MS-CUENTAS, MS-OPERACIONES, los tres BFF y el módulo compartido. Se aprobaron 27 pruebas, con cero fallas y errores. En PC, el reactor completo también terminó con `BUILD SUCCESS` y todos los módulos en `SUCCESS`. La tabla de estado se creó en MySQL y se probaron los contratos internos con Basic Auth.
 
-Capturas previstas: compilación y pruebas; tabla `cuentas_estado`; apertura 201; mantenimiento 200; ID duplicado 409; cierre 200; modificación de cuenta cerrada 409; consultas SQL que conservan la cuenta. El rechazo de retiros se validará al iniciar también MS-OPERACIONES y comprobar su integración.
+## Resultados locales con MySQL y Postman
+
+Observaciones de la ejecución del 10 de octubre de 2026, con Batch detenido:
+
+| Caso | Cuenta | Resultado observado |
+| --- | --- | --- |
+| Apertura | 900001 | 201, saldo 0.00, tipo ahorro y estado ACTIVA |
+| Mantenimiento | 900001 | 200, tipo corriente, saldo 0.00 y estado ACTIVA |
+| ID duplicado | 900001 | 409: Ya existe la cuenta 900001 |
+| Cierre con saldo cero | 900001 | 200, tipo corriente, saldo 0.00 y estado CERRADA |
+| Mantenimiento posterior al cierre | 900001 | 409: No se puede modificar una cuenta cerrada |
+| Consulta SQL de cuenta y estado | 900001 | La fila se conserva, tipo corriente, saldo 0.00, estado CERRADA; apertura 2026-10-10 17:44:32 y cierre 2026-10-10 17:57:24 |
+| Cierre con saldo positivo | 101 | 409: La cuenta debe tener saldo cero antes del cierre |
+| Consulta posterior al cierre rechazado | 101 | 200, Jane Smith, saldo 5025.00, tipo ahorro y estado ACTIVA |
+
+Estas pruebas corresponden al servicio interno en localhost:8091. La cuenta 900001 ya quedó cerrada; para repetir toda la secuencia utilizar otro ID que no exista y conservar los datos de las pruebas anteriores.
+
+## Prueba pendiente de retiro desde una cuenta cerrada
+
+Después de completar las consultas de MS-CUENTAS, detenerlo con Ctrl+C y utilizar la misma terminal en `bff`, conservando las variables DB y JAVA_HOME. Iniciar MS-OPERACIONES importando su archivo local de configuración; así también se configura el nombre del tópico Kafka requerido por el publicador:
+
+```powershell
+$env:SPRING_DATASOURCE_URL = $env:DB_URL
+$env:SPRING_DATASOURCE_USERNAME = $env:DB_USER
+$env:SPRING_DATASOURCE_PASSWORD = $env:DB_PASSWORD
+& "$env:JAVA_HOME\bin\java.exe" -jar .\ms-operaciones\target\ms-operaciones-0.0.1-SNAPSHOT.jar --server.port=8093 --spring.config.import=optional:file:./config-repo/ms-operaciones.properties --spring.cloud.config.enabled=false --eureka.client.enabled=false
+```
+
+Enviar POST a `http://localhost:8093/api/operaciones/cuentas/900001/retiros`, con Basic Auth de servicio y cuerpo `{"monto":1000}`. Se espera 409 con el mensaje `La cuenta está cerrada`. Comprobar después en MySQL que el saldo continúa en cero, el estado sigue CERRADA y no existe una operación para esa cuenta en `operaciones_cajero`.
+
+El rechazo sucede antes de modificar saldos, registrar operaciones y emitir eventos. Las operaciones aprobadas y su publicación/consumo Kafka requieren el broker y forman parte de la validación de integración. La captura de esta prueba MySQL, la gestión mediante BFF Web/OAuth2 y la ejecución de los nuevos contratos en AWS siguen pendientes.
