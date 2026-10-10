@@ -89,7 +89,7 @@ La compilacion inicial y los tres Jobs se verificaron en el PC con MySQL. Se eje
 
 Intereses: periodo `2024-01`, total de intereses `2525.00`, saldos finales `413525.00`. Estados anuales: 20 cuentas, anio 2024, depositos `354400.00`, retiros `268700.00`, compras `345500.00`, pagos `67800.00`, saldo neto de movimientos `-327600.00`. Los 950 rechazos de intereses incluyen 270 cuentas duplicadas y 680 errores de validacion; no representan 950 cuentas distintas.
 
-Estos tiempos corresponden a **una medición por configuración**, no a promedios. La prueba de mayor volumen se documenta a continuación. Quedan pendientes la evidencia de recuperación automática en MySQL, la consistencia con BFF concurrentes y la equivalencia con reglas legacy documentadas. La igualdad entre hilos no sustituye la comparación con el sistema legacy.
+Estos tiempos corresponden a **una medición por configuración**, no a promedios. Las pruebas de mayor volumen y recuperación automática en MySQL se documentan a continuación. Quedan pendientes la consistencia con BFF concurrentes y la equivalencia con reglas legacy documentadas. La igualdad entre hilos no sustituye la comparación con el sistema legacy.
 
 ## Prueba reproducible de mayor volumen
 
@@ -150,7 +150,7 @@ Compilar y probar sin conectarse a la base bancaria:
 .\mvnw.cmd -B "-Dtest=RecursoEntradaBatchTests,RecuperacionBatchTests,ServicioControlReinicioTests" package
 ```
 
-La verificación de desarrollo compiló 35 fuentes Java con Java 17 y aprobó 10 pruebas usando Spring Batch 6.0.4. La compilación Maven y la evidencia de recuperación en el PC con MySQL se verifican como siguiente paso.
+La verificación de desarrollo compiló 35 fuentes Java con Java 17 y aprobó 10 pruebas usando Spring Batch 6.0.4. En PC también se obtuvo `BUILD SUCCESS` mediante Maven: 10 pruebas, cero fallas, errores u omisiones. La recuperación de los tres Jobs se verificó posteriormente con MySQL.
 
 `RecuperacionBatchTests` usa una base H2 en memoria separada del banco, las entradas oficiales y los tres Jobs reales. Compara resultados y rechazos con una ejecución completa, verifica `FAILED → COMPLETED` en la misma instancia, 100 lecturas antes de la falla más 900 tras el reinicio, el límite de intentos y la protección contra cambios de archivo. El test de control de reinicio comprueba IDs numéricos mayores que 127 para evitar confundir objetos `Long` diferentes con ejecuciones diferentes.
 
@@ -182,4 +182,16 @@ $env:BATCH_FALLAR_DESPUES_COMMITS = '0'
 $env:BATCH_JOB_ENABLED = 'false'
 ```
 
-La evidencia de interrupción y recuperación en MySQL todavía debe recogerse antes de dar por finalizada esta etapa.
+### Resultados de recuperación observados en MySQL
+
+Prueba local del 10 de octubre de 2026: un hilo, chunk 50 y falla controlada después de dos commits. En cada Job se observaron 100 lecturas en el intento fallido y 900 en el reinicio, compartiendo la misma instancia. El intento fallido conservó sus dos commits y registró un rollback; el segundo completó 18 commits sin rollbacks.
+
+| Job | Instancia | Ejecución FAILED | Escritos / omitidos antes de fallar | Ejecución COMPLETED | Escritos / omitidos al reanudar |
+| --- | ---: | ---: | --- | ---: | --- |
+| Transacciones | 12 | 12 | 49 / 51 | 13 | 431 / 469 |
+| Intereses | 13 | 14 | 21 / 79 | 15 | 29 / 871 |
+| Estados anuales | 14 | 16 | 66 / 34 | 17 | 618 / 282 |
+
+Resultados finales: 480 transacciones, 520 rechazos y 88 anomalías; 50 intereses y 950 rechazos; 684 movimientos anuales, 316 rechazos y 20 estados. Los intereses sumaron 2.525,00 y los saldos finales 413.525,00. Las comparaciones con las tablas conservadas de ejecuciones completas mostraron cero faltantes y cero diferencias en los campos de negocio revisados para transacciones, intereses, movimientos y estados. Repetir el lote de transacciones ya completado devolvió su ejecución existente sin crear otro intento.
+
+Esta evidencia acredita recuperación desde checkpoints ante una falla controlada del Step; la JVM permaneció activa. La comparación es contra ejecuciones completas de esta solución, no constituye todavía la comparación formal con el sistema legacy. La demostración de reintentos ante una falla transitoria real de base de datos también queda pendiente.

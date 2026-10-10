@@ -8,7 +8,11 @@ Se creó esta rama desde `semana8-oauth-docker` (commit `dbd941fa3ce2a5bc306e3f9
 
 Los CSV requeridos por la evaluación se incorporaron desde [fin_legacy_data](https://github.com/KariVillagran/fin_legacy_data) en `batch/src/main/resources/data/semana_9`. Los tres Jobs usan estos archivos por defecto y requieren activación explícita mediante `BATCH_JOB_ENABLED=true`.
 
-Esta es la integración inicial; aún no es la entrega final. La compilación Batch se intentó y quedó bloqueada por la resolución de red hacia Maven Central. Sus resultados con los CSV nuevos deben verificarse en PC/EC2. El Job de intereses actualiza saldos de cuentas; revisar sus efectos antes de ejecutar pruebas simultáneas con los BFF.
+Esta rama está en desarrollo; aún no es la entrega final. La compilación Maven de Batch y sus 10 pruebas seleccionadas se verificaron en PC. Con los tres CSV oficiales se comprobaron resultados equivalentes entre 1 y 3 hilos, rendimiento con 100.000 transacciones y recuperación automática ante una falla controlada, conservando todos los campos de negocio comparados. El detalle está en [batch/README.md](batch/README.md).
+
+Semana 9 incorpora apertura, mantenimiento del tipo de producto y cierre en MS-CUENTAS. El cierre conserva la cuenta y su historial, exige saldo cero y bloquea nuevos retiros. Aplicar [la migración repetible](bff/sql/03-gestion-cuentas.sql) antes de iniciar esta versión. Los pasos y casos de prueba están en [gestión de cuentas](bff/ms-cuentas/README.md). La validación de estas nuevas funciones con MySQL y su integración mediante OAuth2 en BFF Web son pasos pendientes.
+
+El Job de intereses actualiza saldos del legado desde un archivo histórico. Mantener Batch desactivado durante estas pruebas de operaciones bancarias; la coordinación de actualizaciones Batch y operaciones en línea todavía requiere una validación final.
 
 ### Trabajo pendiente según la evaluación
 
@@ -16,9 +20,9 @@ Esta es la integración inicial; aún no es la entrega final. La compilación Ba
 | --- | --- | --- |
 | 5 procesos críticos (10 puntos) | Batch, microservicios, BFF, seguridad distribuida y Kafka | Explicar los cinco procesos en la propuesta y el informe |
 | Arquitectura y 3 requisitos de negocio (15 puntos) | Arquitectura de semana 8 | Justificar eficiencia batch, contratos por canal y continuidad/seguridad operativa |
-| 3 procesos batch (15 puntos) | Tres Jobs importados, paralelismo, omisiones y reintentos | Ejecutar con entradas oficiales nuevas; verificar integridad, equivalencia, rendimiento y recuperación automática |
+| 3 procesos batch (15 puntos) | Tres Jobs, entradas oficiales, comparación 1/3 hilos, 100.000 filas y recuperación automática verificados en MySQL | Comparación formal con resultados legacy y evidencia de reintentos transitorios de base de datos |
 | 3 BFF (15 puntos) | Web, móvil y cajero | Revalidar respuestas y seguridad con la solución final |
-| 3 servicios clave (15 puntos) | Cuentas, movimientos y operaciones | Completar apertura/cierre/mantenimiento de cuentas; implementar pagos/transferencias/depósitos y gestión de clientes, con seguridad, resiliencia y Kafka |
+| 3 servicios clave (15 puntos) | Gestión de cuentas implementada; movimientos y retiros heredados | Validar cuentas en MySQL; implementar pagos/transferencias/depósitos y gestión de clientes, con seguridad, resiliencia y Kafka |
 | Docker y escala horizontal en AWS (10 puntos) | Compose y despliegue previo | Incorporar componentes nuevos y demostrar varias instancias de los tres servicios exigidos y balanceo |
 | Documentación (10 puntos) | README y diagrama de semana 8 | Preparar `readme.md`, PDF con plantilla oficial, `instrucciones.md`, `despliegue.md` y MP4 de 5–7 minutos con webcam |
 
@@ -449,10 +453,10 @@ Las pruebas realizadas demuestran:
 - Retiro real Cajero -> Kafka.
 - Rama final publicada en GitHub.
 
-## Rama de entrega
+## Rama de trabajo actual
 
 ```text
-semana8-oauth-docker
+semana9-evaluacion-final
 ```
 
-Esta rama contiene la implementación final correspondiente a la Semana 8.
+La base validada de Semana 8 permanece en `semana8-oauth-docker`. Esta rama integra el trabajo de Semana 9 y sus pendientes se describen al inicio del documento.

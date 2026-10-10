@@ -14,6 +14,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./bank_xyz_semana5_db.sql:/docker-entrypoint-initdb.d/01-bank-xyz.sql:ro
+      - ../bff/sql/03-gestion-cuentas.sql:/docker-entrypoint-initdb.d/03-gestion-cuentas.sql:ro
     healthcheck:
       test:
         [
@@ -365,3 +366,4 @@ services:
 volumes:
   mysql_data:
   kafka_data:
+

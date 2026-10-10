@@ -77,7 +77,7 @@ public class ClienteServiciosBanco {
             if (ex.getStatusCode().value() == 404)
                 throw new RecursoNoEncontradoException("No existe la cuenta " + cuentaId);
             if (ex.getStatusCode().value() == 409)
-                throw new SaldoInsuficienteException("La cuenta no tiene saldo suficiente para realizar el retiro");
+                throw new SaldoInsuficienteException("La cuenta no permite realizar el retiro: saldo insuficiente o cuenta cerrada");
             if (ex.getStatusCode().value() == 400)
                 throw new OperacionInvalidaException("El retiro fue rechazado por MS-OPERACIONES");
             throw ex;
@@ -101,3 +101,4 @@ public class ClienteServiciosBanco {
         throw new ServicioBackendNoDisponibleException("MS-OPERACIONES no disponible temporalmente", ex);
     }
 }
+

@@ -21,7 +21,7 @@ public class ServicioBffWeb {
         return new CuentaWebResponse(
                 "WEB",
                 new CuentaWebResponse.Titular(cuenta.cuentaId(), cuenta.nombre(), cuenta.edad()),
-                new CuentaWebResponse.Producto(cuenta.tipoCuenta(), cuenta.saldo(), cuenta.fechaActualizacion()),
+                new CuentaWebResponse.Producto(cuenta.tipoCuenta(), cuenta.saldo(), cuenta.fechaActualizacion(), cuenta.estado()),
                 mapearInteres(backend.obtenerUltimoInteres(cuentaId)),
                 mapearEstadoAnual(backend.obtenerUltimoEstadoAnual(cuentaId)),
                 movimientos);
@@ -42,3 +42,4 @@ public class ServicioBffWeb {
                 e.totalDepositos(), e.totalRetiros(), e.totalCompras(), e.totalPagos(), e.saldoAnual(), e.archivoOrigen());
     }
 }
+

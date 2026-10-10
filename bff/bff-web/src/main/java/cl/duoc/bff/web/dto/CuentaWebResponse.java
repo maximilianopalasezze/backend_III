@@ -24,7 +24,8 @@ public record CuentaWebResponse(
     public record Producto(
             String tipoCuenta,
             BigDecimal saldoDisponible,
-            LocalDateTime fechaActualizacion
+            LocalDateTime fechaActualizacion,
+            String estado
     ) {
     }
 
@@ -59,3 +60,4 @@ public record CuentaWebResponse(
     ) {
     }
 }
+

@@ -17,7 +17,7 @@ public class ServicioBffCajero {
     public SaldoCajeroResponse consultarSaldo(Long cuentaId) {
         var cuenta = backend.obtenerCuenta(cuentaId);
         return new SaldoCajeroResponse("CAJERO", enmascarar(cuenta.cuentaId()), "CLP",
-                cuenta.saldo(), cuenta.saldo().compareTo(MULTIPLO_RETIRO) >= 0);
+                cuenta.saldo(), "ACTIVA".equals(cuenta.estado()) && cuenta.saldo().compareTo(MULTIPLO_RETIRO) >= 0);
     }
 
     public RetiroCajeroResponse retirar(Long cuentaId, SolicitudRetiro solicitud) {
@@ -36,3 +36,4 @@ public class ServicioBffCajero {
         String v = cuentaId.toString(); return "****" + v.substring(Math.max(0, v.length()-2));
     }
 }
+

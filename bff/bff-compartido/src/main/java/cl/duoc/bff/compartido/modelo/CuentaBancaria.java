@@ -9,6 +9,12 @@ public record CuentaBancaria(
         BigDecimal saldo,
         Integer edad,
         String tipoCuenta,
-        LocalDateTime fechaActualizacion
+        LocalDateTime fechaActualizacion,
+        String estado
 ) {
+    public CuentaBancaria(Long cuentaId, String nombre, BigDecimal saldo, Integer edad,
+                          String tipoCuenta, LocalDateTime fechaActualizacion) {
+        this(cuentaId, nombre, saldo, edad, tipoCuenta, fechaActualizacion, "ACTIVA");
+    }
 }
+

@@ -16,5 +16,9 @@ public class ApiErrorHandler {
     @ExceptionHandler(SaldoInsuficiente.class)
     ResponseEntity<?> conflicto(SaldoInsuficiente ex) { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("estado",409,"mensaje",ex.getMessage())); }
     public static class RecursoNoEncontrado extends RuntimeException { public RecursoNoEncontrado(String m) { super(m); } }
+    @ExceptionHandler(ConflictoCuenta.class)
+    ResponseEntity<?> cuentaConflict(ConflictoCuenta ex) { return ResponseEntity.status(409).body(Map.of("estado",409,"mensaje",ex.getMessage())); }
+    public static class ConflictoCuenta extends RuntimeException { public ConflictoCuenta(String m) { super(m); } }
     public static class SaldoInsuficiente extends RuntimeException { public SaldoInsuficiente(String m) { super(m); } }
 }
+

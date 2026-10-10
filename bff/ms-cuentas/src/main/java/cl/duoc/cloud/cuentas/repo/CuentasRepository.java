@@ -3,14 +3,36 @@ package cl.duoc.cloud.cuentas.repo;
 import cl.duoc.cloud.cuentas.model.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import java.math.BigDecimal;
 import java.util.*;
 
 @Repository
 public class CuentasRepository {
  private final JdbcTemplate jdbc; public CuentasRepository(JdbcTemplate jdbc){this.jdbc=jdbc;}
  public Optional<CuentaResponse> cuenta(Long id){
-  return jdbc.query("SELECT cuenta_id,nombre,saldo,edad,tipo_cuenta,fecha_actualizacion FROM cuentas WHERE cuenta_id=?",
-   (rs,i)->new CuentaResponse(rs.getLong("cuenta_id"),rs.getString("nombre"),rs.getBigDecimal("saldo"),rs.getInt("edad"),rs.getString("tipo_cuenta"),rs.getTimestamp("fecha_actualizacion").toLocalDateTime()),id).stream().findFirst();
+  return jdbc.query("SELECT c.*,COALESCE(e.estado,'ACTIVA') estado FROM cuentas c LEFT JOIN cuentas_estado e ON e.cuenta_id=c.cuenta_id WHERE c.cuenta_id=?",
+   (rs,i)->new CuentaResponse(rs.getLong("cuenta_id"),rs.getString("nombre"),rs.getBigDecimal("saldo"),rs.getInt("edad"),rs.getString("tipo_cuenta"),rs.getTimestamp("fecha_actualizacion").toLocalDateTime(),rs.getString("estado")),id).stream().findFirst();
+ }
+ public void insertar(AperturaCuentaRequest r){
+  jdbc.update("INSERT INTO cuentas(cuenta_id,nombre,saldo,edad,tipo_cuenta) VALUES(?,?,0,?,?)",r.cuentaId(),r.nombre().trim(),r.edad(),r.tipoCuenta());
+ }
+ public void registrarApertura(Long id){
+  jdbc.update("INSERT INTO cuentas_estado(cuenta_id,estado) VALUES(?,'ACTIVA')",id);
+ }
+ public Optional<BigDecimal> saldoParaActualizar(Long id){
+  return jdbc.query("SELECT saldo FROM cuentas WHERE cuenta_id=? FOR UPDATE",(rs,i)->rs.getBigDecimal("saldo"),id).stream().findFirst();
+ }
+ public String estadoCuenta(Long id){
+  return jdbc.query("SELECT estado FROM cuentas_estado WHERE cuenta_id=? FOR UPDATE",(rs,i)->rs.getString("estado"),id).stream().findFirst().orElse("ACTIVA");
+ }
+ public void actualizarTipo(Long id,String tipo){
+  jdbc.update("UPDATE cuentas SET tipo_cuenta=?,fecha_actualizacion=CURRENT_TIMESTAMP WHERE cuenta_id=?",tipo,id);
+ }
+ public void registrarCierre(Long id){
+  if(jdbc.update("UPDATE cuentas_estado SET estado='CERRADA',fecha_cierre=CURRENT_TIMESTAMP WHERE cuenta_id=?",id)==0){
+   jdbc.update("INSERT INTO cuentas_estado(cuenta_id,estado,fecha_cierre) VALUES(?,'CERRADA',CURRENT_TIMESTAMP)",id);
+  }
+  jdbc.update("UPDATE cuentas SET fecha_actualizacion=CURRENT_TIMESTAMP WHERE cuenta_id=?",id);
  }
  public Optional<InteresResponse> interes(Long id){
   return jdbc.query("SELECT periodo,saldo_inicial,tasa_interes,interes_calculado,saldo_final,archivo_origen FROM intereses_calculados WHERE cuenta_id=? ORDER BY fecha_calculo DESC,id DESC LIMIT 1",
@@ -25,3 +47,4 @@ public class CuentasRepository {
    (rs,i)->new ResumenResponse(rs.getLong("cuentas"),rs.getLong("transacciones"),rs.getLong("movimientos"),rs.getLong("rechazos"),rs.getBigDecimal("saldo_total")));
  }
 }
+
