@@ -3,6 +3,7 @@ package cl.duoc.bank_batch.servicio;
 import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.stereotype.Service;
+import java.util.Objects;
 
 @Service
 public class ServicioControlReinicio {
@@ -23,8 +24,8 @@ public class ServicioControlReinicio {
                 .getJobExecutions(ejecucionActual.getJobInstance())
                 .stream()
                 .anyMatch(ejecucionAnterior ->
-                        ejecucionAnterior.getId()
-                                != ejecucionActual.getId()
+                        !Objects.equals(ejecucionAnterior.getId(),
+                                ejecucionActual.getId())
                 );
     }
 }

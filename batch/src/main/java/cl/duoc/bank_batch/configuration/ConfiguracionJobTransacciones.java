@@ -1,6 +1,7 @@
 package cl.duoc.bank_batch.configuration;
 
 import cl.duoc.bank_batch.excepcion.ValidacionDatoException;
+import cl.duoc.bank_batch.listener.ListenerFalloControlado;
 import cl.duoc.bank_batch.listener.ListenerHilosProcesamiento;
 import cl.duoc.bank_batch.listener.ListenerRechazosTransaccion;
 import cl.duoc.bank_batch.listener.ListenerReintentosBatch;
@@ -163,6 +164,7 @@ public class ConfiguracionJobTransacciones {
             @Qualifier("ejecutorBatch")
             AsyncTaskExecutor ejecutorBatch,
 
+            ListenerFalloControlado listenerFalloControlado,
             ListenerReintentosBatch listenerReintentosBatch,
             ListenerRendimientoBatch listenerRendimientoBatch,
             ListenerHilosProcesamiento listenerHilosProcesamiento,
@@ -191,6 +193,7 @@ public class ConfiguracionJobTransacciones {
                 .retryListener(listenerReintentosBatch)
                 .listener(listenerRendimientoBatch)
                 .listener(listenerHilosProcesamiento)
+                .listener(listenerFalloControlado)
                 .taskExecutor(ejecutorBatch)
                 .build();
     }

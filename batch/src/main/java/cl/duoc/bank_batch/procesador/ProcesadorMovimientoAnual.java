@@ -5,19 +5,25 @@ import cl.duoc.bank_batch.modelo.MovimientoAnualCsv;
 import cl.duoc.bank_batch.modelo.MovimientoAnualProcesado;
 import cl.duoc.bank_batch.utilidad.ConversorFecha;
 import org.springframework.batch.infrastructure.item.ItemProcessor;
+import org.springframework.batch.infrastructure.item.ItemStream;
+import org.springframework.batch.infrastructure.item.ExecutionContext;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.Normalizer;
 import java.time.LocalDate;
 import java.util.Locale;
+import java.util.Base64;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ProcesadorMovimientoAnual
         implements ItemProcessor<
         MovimientoAnualCsv,
-        MovimientoAnualProcesado> {
+        MovimientoAnualProcesado>, ItemStream {
+
+    private static final String CLAVE_MOVIMIENTOS = "procesadorAnual.movimientosConfirmados";
 
     private final String archivoOrigen;
     private final int anioProcesado;
@@ -37,6 +43,27 @@ public class ProcesadorMovimientoAnual
 
         this.archivoOrigen = archivoOrigen;
         this.anioProcesado = anioProcesado;
+    }
+
+    @Override
+    public void open(ExecutionContext contexto) {
+        movimientosProcesados.clear();
+        String movimientos = contexto.getString(CLAVE_MOVIMIENTOS, "");
+        if (!movimientos.isEmpty()) {
+            for (String movimiento : movimientos.split(",")) {
+                movimientosProcesados.add(new String(Base64.getDecoder().decode(movimiento),
+                        StandardCharsets.UTF_8));
+            }
+        }
+    }
+
+    @Override
+    public void update(ExecutionContext contexto) {
+        // Base64 conserva descripciones que contengan comas u otros separadores.
+        contexto.putString(CLAVE_MOVIMIENTOS, movimientosProcesados.stream().sorted()
+                .map(movimiento -> Base64.getEncoder().encodeToString(
+                        movimiento.getBytes(StandardCharsets.UTF_8)))
+                .collect(java.util.stream.Collectors.joining(",")));
     }
 
     @Override

@@ -4,6 +4,8 @@ import cl.duoc.bank_batch.excepcion.ValidacionDatoException;
 import cl.duoc.bank_batch.modelo.InteresCsv;
 import cl.duoc.bank_batch.modelo.InteresProcesado;
 import org.springframework.batch.infrastructure.item.ItemProcessor;
+import org.springframework.batch.infrastructure.item.ItemStream;
+import org.springframework.batch.infrastructure.item.ExecutionContext;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -12,7 +14,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ProcesadorInteres
-        implements ItemProcessor<InteresCsv, InteresProcesado> {
+        implements ItemProcessor<InteresCsv, InteresProcesado>, ItemStream {
+
+    private static final String CLAVE_CUENTAS = "procesadorIntereses.cuentasConfirmadas";
 
     private final String archivoOrigen;
     private final String periodo;
@@ -37,6 +41,23 @@ public class ProcesadorInteres
         this.tasaHipoteca = tasaHipoteca;
 
         validarConfiguracion();
+    }
+
+    @Override
+    public void open(ExecutionContext contexto) {
+        cuentasProcesadas.clear();
+        String cuentas = contexto.getString(CLAVE_CUENTAS, "");
+        if (!cuentas.isEmpty()) {
+            for (String cuenta : cuentas.split(",")) {
+                cuentasProcesadas.add(Long.parseLong(cuenta));
+            }
+        }
+    }
+
+    @Override
+    public void update(ExecutionContext contexto) {
+        contexto.putString(CLAVE_CUENTAS, cuentasProcesadas.stream()
+                .sorted().map(String::valueOf).collect(java.util.stream.Collectors.joining(",")));
     }
 
     @Override

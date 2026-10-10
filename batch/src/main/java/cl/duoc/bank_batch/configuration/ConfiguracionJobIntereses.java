@@ -1,6 +1,7 @@
 package cl.duoc.bank_batch.configuration;
 
 import cl.duoc.bank_batch.excepcion.ValidacionDatoException;
+import cl.duoc.bank_batch.listener.ListenerFalloControlado;
 import cl.duoc.bank_batch.listener.ListenerHilosProcesamiento;
 import cl.duoc.bank_batch.listener.ListenerRechazosInteres;
 import cl.duoc.bank_batch.listener.ListenerReintentosBatch;
@@ -140,6 +141,8 @@ public class ConfiguracionJobIntereses {
                             tipo_cuenta = VALUES(tipo_cuenta)
                         """)
                 .beanMapped()
+                // Un upsert idéntico puede informar cero cambios: el registro ya está confirmado.
+                .assertUpdates(false)
                 .build();
     }
 
@@ -175,6 +178,8 @@ public class ConfiguracionJobIntereses {
                             saldo_final = VALUES(saldo_final)
                         """)
                 .beanMapped()
+                // Un upsert idéntico puede informar cero cambios: el registro ya está confirmado.
+                .assertUpdates(false)
                 .build();
     }
 
@@ -257,6 +262,7 @@ public class ConfiguracionJobIntereses {
             @Qualifier("ejecutorBatch")
             AsyncTaskExecutor ejecutorBatch,
 
+            ListenerFalloControlado listenerFalloControlado,
             ListenerReintentosBatch listenerReintentosBatch,
             ListenerRendimientoBatch listenerRendimientoBatch,
             ListenerHilosProcesamiento listenerHilosProcesamiento,
@@ -285,6 +291,7 @@ public class ConfiguracionJobIntereses {
                 .retryListener(listenerReintentosBatch)
                 .listener(listenerRendimientoBatch)
                 .listener(listenerHilosProcesamiento)
+                .listener(listenerFalloControlado)
                 .taskExecutor(ejecutorBatch)
                 .build();
     }
