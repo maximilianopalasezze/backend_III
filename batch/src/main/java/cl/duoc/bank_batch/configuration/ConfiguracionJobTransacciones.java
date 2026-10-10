@@ -29,7 +29,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.ClassPathResource;
+import cl.duoc.bank_batch.utilidad.RecursoEntradaBatch;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -47,7 +47,7 @@ public class ConfiguracionJobTransacciones {
     ) {
         return new FlatFileItemReaderBuilder<TransaccionCsv>()
                 .name("lectorTransacciones")
-                .resource(new ClassPathResource(archivoOrigen))
+                .resource(RecursoEntradaBatch.cargar(archivoOrigen))
                 .encoding("UTF-8")
                 .linesToSkip(1)
                 .strict(true)

@@ -44,23 +44,24 @@ Con MySQL disponible en `localhost:3306`, base `bank_xyz_semana5_db`, configurar
 
 ```powershell
 $env:DB_USER = "bank_batch_user"
-$env:DB_PASSWORD = "TU_PASSWORD_LOCAL"
+$claveMySQL = Read-Host "Contrasena de MySQL" -AsSecureString
+$env:DB_PASSWORD = [System.Net.NetworkCredential]::new("", $claveMySQL).Password
 $env:BATCH_JOB_ENABLED = "true"
 $env:BATCH_JOB_NAME = "jobTransaccionesDiarias"
-java -jar .\target\bank-batch-0.0.1-SNAPSHOT.jar run.id=9001
+& "$env:JAVA_HOME\bin\java.exe" -jar .\target\bank-batch-0.0.1-SNAPSHOT.jar
 ```
 
-Para los otros procesos, seleccionar el Job y un identificador nuevo:
+Para los otros procesos, seleccionar el Job:
 
 ```powershell
 $env:BATCH_JOB_NAME = "jobInteresesMensuales"
-java -jar .\target\bank-batch-0.0.1-SNAPSHOT.jar run.id=9002
+& "$env:JAVA_HOME\bin\java.exe" -jar .\target\bank-batch-0.0.1-SNAPSHOT.jar
 
 $env:BATCH_JOB_NAME = "jobEstadosCuentaAnuales"
-java -jar .\target\bank-batch-0.0.1-SNAPSHOT.jar run.id=9003
+& "$env:JAVA_HOME\bin\java.exe" -jar .\target\bank-batch-0.0.1-SNAPSHOT.jar
 ```
 
-Para una instancia nueva, elegir un `run.id` que aún no exista. Para reiniciar una ejecución fallida, conservar exactamente sus parámetros; la verificación de reinicios y recuperación automática pertenece a la siguiente etapa.
+El lanzador predeterminado de Spring Boot 4.1 / Spring Batch 6 usa el `RunIdIncrementer` de estos Jobs para crear una instancia nueva. Las ejecuciones locales mostraron que ignora un `run.id` adicional pasado por la linea de comandos. Por ello, repetir este comando **no demuestra reinicio** de una instancia fallida. La recuperacion con los parametros originales debe implementarse y verificarse expresamente en la siguiente etapa.
 
 **Efectos sobre la base compartida:** el Job de intereses inserta o actualiza `cuentas`, incluyendo el saldo, a partir del CSV. Al comenzar una instancia nueva, los listeners limpian resultados y rechazos correspondientes al archivo/período procesado; durante un reinicio intentan conservar los datos confirmados. Antes de las pruebas integradas, guardar una copia de los datos de prueba y evitar retiros simultáneos sobre las cuentas que se recargan.
 
@@ -78,4 +79,52 @@ No se ejecutó ningún Job sobre la base de EC2 durante esta integración.
 
 Paso 1: integración del componente y configuración de entradas. Se verificaron la estructura, los tres Jobs, los encabezados y cantidades de registros, y la coincidencia de los esquemas de tablas de negocio con el SQL de semana 8.
 
-La compilación se intentó, pero la descarga del POM padre desde Maven Central falló por resolución de red. No se certifica compilación ni ejecución en este entorno. Deben verificarse en PC/EC2 los tres Jobs, resultados con los CSV nuevos, metadatos Batch en MySQL, consistencia al convivir con los BFF, reinicios y equivalencia de resultados con reglas legacy documentadas.
+La compilacion inicial y los tres Jobs se verificaron en el PC con MySQL. Se ejecutaron con 1 y 3 hilos, chunk 50, y todos terminaron en `COMPLETED`. Las consultas por transaccion/cuenta confirmaron cero faltantes y cero diferencias en los datos comparados (excluidos IDs internos y fechas de procesamiento).
+
+| Job | Leidos | Escritos | Rechazados | Step 1 hilo (ms) | Step 3 hilos (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Transacciones | 1000 | 480 | 520 | 2899 | 1921 |
+| Intereses | 1000 | 50 | 950 | 5154 | 2799 |
+| Estados anuales | 1000 | 684 | 316 | 2040 | 1216 |
+
+Intereses: periodo `2024-01`, total de intereses `2525.00`, saldos finales `413525.00`. Estados anuales: 20 cuentas, anio 2024, depositos `354400.00`, retiros `268700.00`, compras `345500.00`, pagos `67800.00`, saldo neto de movimientos `-327600.00`. Los 950 rechazos de intereses incluyen 270 cuentas duplicadas y 680 errores de validacion; no representan 950 cuentas distintas.
+
+Estos tiempos corresponden a **una medicion por configuracion**, no a promedios ni a una prueba de alto volumen. Sigue pendiente la recuperacion automatica, la consistencia con BFF concurrentes y la equivalencia con reglas legacy documentadas. La igualdad entre hilos no sustituye la comparacion con el sistema legacy.
+
+## Prueba reproducible de mayor volumen
+
+Los tres lectores aceptan la ruta habitual dentro del classpath o una URI `file:` de un CSV externo. El generador de transacciones conserva fecha, monto y tipo de cada fila oficial, incluidos sus errores; transforma solo el ID: `ID original + 1000 * indice de copia`. No agrega un CSV grande al repositorio.
+
+Primero compilar y ejecutar los tests de recursos (sin levantar el contexto ni ejecutar Jobs):
+
+```powershell
+.\mvnw.cmd -B -Dtest=RecursoEntradaBatchTests package
+```
+
+Generar 100.000 filas desde la carpeta `batch`:
+
+```powershell
+.\scripts\generar-volumen-transacciones.ps1 -Repeticiones 100
+$rutaVolumen = (Resolve-Path '.\.local\datos-prueba\transacciones_100000.csv').Path
+$env:BATCH_ARCHIVO_TRANSACCIONES = [System.Uri]::new($rutaVolumen).AbsoluteUri
+$env:BATCH_JOB_NAME = 'jobTransaccionesDiarias'
+$env:BATCH_JOB_ENABLED = 'true'
+$env:BATCH_HILOS = '3'
+$env:BATCH_CHUNK = '50'
+$env:BATCH_LIMITE_OMISIONES = '60000'
+$env:BATCH_ID_PRUEBA = 's9_transacciones_100k_h3_c50'
+& "$env:JAVA_HOME\bin\java.exe" -jar .\target\bank-batch-0.0.1-SNAPSHOT.jar
+```
+
+El limite de omisiones se eleva explicitamente para este ensayo: al repetir el archivo 100 veces se esperan 48.000 transacciones aceptadas, 52.000 rechazos y 8.800 anomalias entre las aceptadas. El manifiesto JSON junto al CSV registra la transformacion y los SHA-256 de entrada y salida. `.local/` ya esta excluido de Git. El archivo/perfil de esta prueba es diferente del oficial, por lo que la limpieza de resultados queda limitada a su URI. No usar operaciones simultaneas sobre el mismo archivo durante la prueba.
+
+Comparar 1 y 3 hilos requiere conservar el mismo CSV, cambiar solo `BATCH_HILOS` e `BATCH_ID_PRUEBA` y verificar los datos persistidos. Las advertencias de las 52.000 filas rechazadas forman parte del tiempo medido; mantener la misma configuracion de logging al comparar.
+
+Para volver a las pruebas oficiales:
+
+```powershell
+$env:BATCH_ARCHIVO_TRANSACCIONES = 'data/semana_9/movimientos_financieros_diarios.csv'
+Remove-Item Env:BATCH_LIMITE_OMISIONES -ErrorAction SilentlyContinue
+```
+
+La ampliacion para archivos externos y el ensayo de 100.000 filas deben validarse en PC antes de considerar esta etapa completada.
