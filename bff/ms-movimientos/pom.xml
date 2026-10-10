@@ -22,6 +22,7 @@
 </dependency>
  </dependencies>
 <build>
+    <testResources><testResource><directory>../sql</directory><includes><include>03-gestion-cuentas.sql</include><include>05-pagos.sql</include></includes></testResource></testResources>
     <plugins>
         <plugin>
             <groupId>org.springframework.boot</groupId>

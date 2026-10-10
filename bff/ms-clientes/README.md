@@ -80,4 +80,16 @@ En Docker, MS-CLIENTES usa Config Server, se registra en Eureka con un ID de ins
 
 Verificación de desarrollo con Java 17 y Maven: `verify` para MS-CLIENTES y su padre terminó correctamente. Se aprobaron 15 pruebas, con cero fallas, errores u omisiones: 8 de gestión con base de datos y 7 de seguridad/validación. El JAR ejecutable inició correctamente en el puerto 8094 importando la configuración local, con Config Server y Eureka desactivados. Esa comprobación de arranque no consultó MySQL. La estructura YAML de Compose también se validó.
 
-La validación local con MySQL/Postman, las rutas en los BFF con OAuth2 y Resilience4j, y la ejecución en AWS se completarán en las siguientes etapas. MS-CLIENTES no publica eventos bancarios; los eventos de retiros existentes se gestionan en MS-OPERACIONES/Kafka.
+Validación en PC con MySQL y Postman, 10 de octubre de 2026: el reactor completo terminó con `BUILD SUCCESS`, incluido MS-CLIENTES. Se crearon las tablas `clientes` (9 columnas) y `clientes_cuentas` (3 columnas), y el servicio inició en el puerto 8094.
+
+| Caso observado | Resultado |
+| --- | --- |
+| Crear cliente 900101 con la cuenta activa 101 | 201, perfil ESTANDAR y versión 0 |
+| Actualizar correo, teléfono, dirección y perfil | 200, perfil PREFERENTE y versión 1 |
+| Repetir la actualización con versión 0 | 409, consulta de versión actual requerida |
+| Intentar vincular la cuenta cerrada 900001 | 409, vínculo rechazado |
+| Consultar las tablas unidas en MySQL | Una fila: correo `jane.actualizada@example.com`, perfil PREFERENTE, versión 1, cuenta 101 ACTIVA y saldo 5025.00; sin vínculo con 900001 |
+
+Las capturas muestran pruebas secuenciales en MySQL. La competencia entre dos actualizaciones simultáneas se verificó en las pruebas automatizadas con H2.
+
+Quedan pendientes las rutas en los BFF con OAuth2 y Resilience4j y la ejecución en AWS. MS-CLIENTES no publica eventos bancarios; los eventos de retiros existentes se gestionan en MS-OPERACIONES/Kafka.

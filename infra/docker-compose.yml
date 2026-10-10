@@ -16,6 +16,7 @@ services:
       - ./bank_xyz_semana5_db.sql:/docker-entrypoint-initdb.d/01-bank-xyz.sql:ro
       - ../bff/sql/03-gestion-cuentas.sql:/docker-entrypoint-initdb.d/03-gestion-cuentas.sql:ro
       - ../bff/sql/04-clientes.sql:/docker-entrypoint-initdb.d/04-clientes.sql:ro
+      - ../bff/sql/05-pagos.sql:/docker-entrypoint-initdb.d/05-pagos.sql:ro
     healthcheck:
       test:
         [
@@ -75,6 +76,7 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic movimientos.creados --partitions 3 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic operaciones.procesadas --partitions 3 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic operaciones.fallidas --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic pagos.procesados --partitions 3 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list
     restart: "no"
 
@@ -211,6 +213,39 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8094/actuator/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 25s
+
+  ms-pagos:
+    build:
+      context: ../bff/ms-pagos
+    image: banco-xyz/ms-pagos:semana9
+    restart: unless-stopped
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:mysql://mysql:3306/bank_xyz_semana5_db?useSSL=false&serverTimezone=America/Santiago&allowPublicKeyRetrieval=true
+      DB_USER: bank_batch_user
+      DB_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD}
+      BACKEND_BASIC_USER: svc-bff
+      BACKEND_BASIC_PASSWORD: ${BACKEND_BASIC_PASSWORD:?Define BACKEND_BASIC_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      OUTBOX_ENABLED: "true"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8095/actuator/health >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 15

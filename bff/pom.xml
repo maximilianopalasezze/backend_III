@@ -29,6 +29,7 @@
     <module>ms-movimientos</module>
     <module>ms-operaciones</module>
     <module>ms-clientes</module>
+    <module>ms-pagos</module>
     <module>bff-web</module>
     <module>bff-movil</module>
     <module>bff-cajero</module>
