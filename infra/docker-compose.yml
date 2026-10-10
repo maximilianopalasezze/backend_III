@@ -15,6 +15,7 @@ services:
       - mysql_data:/var/lib/mysql
       - ./bank_xyz_semana5_db.sql:/docker-entrypoint-initdb.d/01-bank-xyz.sql:ro
       - ../bff/sql/03-gestion-cuentas.sql:/docker-entrypoint-initdb.d/03-gestion-cuentas.sql:ro
+      - ../bff/sql/04-clientes.sql:/docker-entrypoint-initdb.d/04-clientes.sql:ro
     healthcheck:
       test:
         [
@@ -181,6 +182,35 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8091/actuator/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 25s
+
+  ms-clientes:
+    build:
+      context: ../bff/ms-clientes
+    image: banco-xyz/ms-clientes:semana9
+    restart: unless-stopped
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:mysql://mysql:3306/bank_xyz_semana5_db?useSSL=false&serverTimezone=America/Santiago&allowPublicKeyRetrieval=true
+      DB_USER: bank_batch_user
+      DB_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD}
+      BACKEND_BASIC_USER: svc-bff
+      BACKEND_BASIC_PASSWORD: ${BACKEND_BASIC_PASSWORD:?Define BACKEND_BASIC_PASSWORD}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8094/actuator/health >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 15

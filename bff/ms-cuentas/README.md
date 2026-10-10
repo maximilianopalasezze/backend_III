@@ -64,10 +64,12 @@ Observaciones de la ejecución del 10 de octubre de 2026, con Batch detenido:
 | Consulta SQL de cuenta y estado | 900001 | La fila se conserva, tipo corriente, saldo 0.00, estado CERRADA; apertura 2026-10-10 17:44:32 y cierre 2026-10-10 17:57:24 |
 | Cierre con saldo positivo | 101 | 409: La cuenta debe tener saldo cero antes del cierre |
 | Consulta posterior al cierre rechazado | 101 | 200, Jane Smith, saldo 5025.00, tipo ahorro y estado ACTIVA |
+| Retiro desde una cuenta cerrada, mediante MS-OPERACIONES | 900001 | POST con monto 1000: 409, La cuenta está cerrada |
+| Consulta SQL posterior al retiro rechazado | 900001 | Saldo 0.00, estado CERRADA, fecha de cierre 2026-10-10 17:57:24 y 0 filas en operaciones_cajero |
 
 Estas pruebas corresponden al servicio interno en localhost:8091. La cuenta 900001 ya quedó cerrada; para repetir toda la secuencia utilizar otro ID que no exista y conservar los datos de las pruebas anteriores.
 
-## Prueba pendiente de retiro desde una cuenta cerrada
+## Prueba de retiro desde una cuenta cerrada
 
 Después de completar las consultas de MS-CUENTAS, detenerlo con Ctrl+C y utilizar la misma terminal en `bff`, conservando las variables DB y JAVA_HOME. Iniciar MS-OPERACIONES importando su archivo local de configuración; así también se configura el nombre del tópico Kafka requerido por el publicador:
 
@@ -80,4 +82,4 @@ $env:SPRING_DATASOURCE_PASSWORD = $env:DB_PASSWORD
 
 Enviar POST a `http://localhost:8093/api/operaciones/cuentas/900001/retiros`, con Basic Auth de servicio y cuerpo `{"monto":1000}`. Se espera 409 con el mensaje `La cuenta está cerrada`. Comprobar después en MySQL que el saldo continúa en cero, el estado sigue CERRADA y no existe una operación para esa cuenta en `operaciones_cajero`.
 
-El rechazo sucede antes de modificar saldos, registrar operaciones y emitir eventos. Las operaciones aprobadas y su publicación/consumo Kafka requieren el broker y forman parte de la validación de integración. La captura de esta prueba MySQL, la gestión mediante BFF Web/OAuth2 y la ejecución de los nuevos contratos en AWS siguen pendientes.
+El rechazo sucede antes de modificar saldos, registrar operaciones y emitir eventos. El caso y su consulta de consistencia se verificaron localmente con Postman y MySQL. Las operaciones aprobadas y su publicación/consumo Kafka requieren el broker y forman parte de la validación de integración. La gestión mediante BFF Web/OAuth2 y la ejecución de los nuevos contratos en AWS siguen pendientes.

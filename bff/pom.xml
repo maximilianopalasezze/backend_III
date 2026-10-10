@@ -28,6 +28,7 @@
     <module>ms-cuentas</module>
     <module>ms-movimientos</module>
     <module>ms-operaciones</module>
+    <module>ms-clientes</module>
     <module>bff-web</module>
     <module>bff-movil</module>
     <module>bff-cajero</module>
@@ -45,3 +46,4 @@
     </dependencies>
   </dependencyManagement>
 </project>
+
