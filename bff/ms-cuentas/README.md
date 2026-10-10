@@ -32,10 +32,13 @@ Desde `bff`:
 Con `DB_URL`, `DB_USER` y `DB_PASSWORD` ya definidos, iniciar el servicio en una terminal local:
 
 ```powershell
-& "$env:JAVA_HOME\bin\java.exe" -jar .\ms-cuentas\target\ms-cuentas-0.0.1-SNAPSHOT.jar --spring.cloud.config.enabled=false --eureka.client.enabled=false
+$env:SPRING_DATASOURCE_URL = $env:DB_URL
+$env:SPRING_DATASOURCE_USERNAME = $env:DB_USER
+$env:SPRING_DATASOURCE_PASSWORD = $env:DB_PASSWORD
+& "$env:JAVA_HOME\bin\java.exe" -jar .\ms-cuentas\target\ms-cuentas-0.0.1-SNAPSHOT.jar --server.port=8091 --spring.cloud.config.enabled=false --eureka.client.enabled=false
 ```
 
-Este modo permite probar directamente en `http://localhost:8091`, sin Config Server ni Eureka. Para la integración final se usan Config Server, Eureka y los BFF con HTTPS/OAuth2. Mantener Batch detenido durante la prueba: su Job de intereses escribe saldos históricos.
+Este modo permite probar directamente en `http://localhost:8091`, sin Config Server ni Eureka. Como los parámetros de conexión y puerto están en Config Server, la prueba aislada copia las variables DB a las propiedades de entorno que Spring reconoce directamente e indica el puerto explícitamente. Para la integración final se usan Config Server, Eureka y los BFF con HTTPS/OAuth2. Mantener Batch detenido durante la prueba: su Job de intereses escribe saldos históricos.
 
 En Postman configurar Basic Auth con el usuario y contraseña de servicio definidos por `backend.security.usuario` y `backend.security.password` (o sus valores del entorno utilizado). No incluir contraseñas ni tokens en las capturas. Usar una cuenta nueva de prueba, por ejemplo 900001, en lugar de cerrar la cuenta 102 de los canales OAuth2.
 
@@ -45,6 +48,6 @@ Cierre, mantenimiento y retiro bloquean primero la misma fila de `cuentas` con `
 
 `GestionCuentasTests` comprueba persistencia, saldo, duplicados, restricciones del cierre, compatibilidad con cuentas previas, errores por inexistencia y bloqueo concurrente. `EstadoCuentaRetiroTests`, en MS-OPERACIONES, usa el repositorio y servicio reales para comprobar retiros de cuentas cerradas, cuentas previas y saldo insuficiente. Las pruebas de seguridad ejercitan además apertura y cierre protegidos y validación de solicitudes. H2 se utiliza como base aislada de pruebas; la evidencia MySQL se recoge durante la validación local.
 
-Verificación de desarrollo con Java 17 y Maven: `verify` terminó correctamente para MS-CUENTAS, MS-OPERACIONES, los tres BFF y el módulo compartido. Se aprobaron 27 pruebas, con cero fallas y errores. La compilación completa en el PC y la validación contra MySQL son los siguientes pasos.
+Verificación de desarrollo con Java 17 y Maven: `verify` terminó correctamente para MS-CUENTAS, MS-OPERACIONES, los tres BFF y el módulo compartido. Se aprobaron 27 pruebas, con cero fallas y errores. En PC, el reactor completo también terminó con `BUILD SUCCESS` y todos los módulos en `SUCCESS`. La tabla de estado se creó en MySQL; falta validar allí los contratos de gestión.
 
 Capturas previstas: compilación y pruebas; tabla `cuentas_estado`; apertura 201; mantenimiento 200; ID duplicado 409; cierre 200; modificación de cuenta cerrada 409; consultas SQL que conservan la cuenta. El rechazo de retiros se validará al iniciar también MS-OPERACIONES y comprobar su integración.
