@@ -1,8 +1,32 @@
-# Banco XYZ - Desarrollo Backend III - Semana 8
+# Banco XYZ - Desarrollo Backend III - Semana 9
 
-Implementación final de la actividad de **Semana 8**, integrando autenticación OAuth2, BFF protegidos, microservicios Spring Cloud, tolerancia a fallos, mensajería asíncrona con Kafka y despliegue mediante Docker Compose.
+Base de trabajo de la **Evaluación Final Transversal de Semana 9**, continuando la solución de semana 8: OAuth2, tres BFF, Spring Cloud, Resilience4j, Kafka y Docker Compose.
 
-La solución continúa el trabajo de las semanas anteriores y consolida todos los componentes en una arquitectura distribuida y reproducible.
+## Estado de la integración
+
+Se creó esta rama desde `semana8-oauth-docker` (commit `dbd941fa3ce2a5bc306e3f984e43941edfd0627f`) y se recuperó Spring Batch de `main` (commit `354050a1ed5380a5f579596788b27c947cf488f9`) en la carpeta independiente [batch](batch/README.md). Se conserva **bank_xyz_semana5_db**.
+
+Los CSV requeridos por la evaluación se incorporaron desde [fin_legacy_data](https://github.com/KariVillagran/fin_legacy_data) en `batch/src/main/resources/data/semana_9`. Los tres Jobs usan estos archivos por defecto y requieren activación explícita mediante `BATCH_JOB_ENABLED=true`.
+
+Esta es la integración inicial; aún no es la entrega final. La compilación Batch se intentó y quedó bloqueada por la resolución de red hacia Maven Central. Sus resultados con los CSV nuevos deben verificarse en PC/EC2. El Job de intereses actualiza saldos de cuentas; revisar sus efectos antes de ejecutar pruebas simultáneas con los BFF.
+
+### Trabajo pendiente según la evaluación
+
+| Criterio | Base disponible | Validación o cambio pendiente |
+| --- | --- | --- |
+| 5 procesos críticos (10 puntos) | Batch, microservicios, BFF, seguridad distribuida y Kafka | Explicar los cinco procesos en la propuesta y el informe |
+| Arquitectura y 3 requisitos de negocio (15 puntos) | Arquitectura de semana 8 | Justificar eficiencia batch, contratos por canal y continuidad/seguridad operativa |
+| 3 procesos batch (15 puntos) | Tres Jobs importados, paralelismo, omisiones y reintentos | Ejecutar con entradas oficiales nuevas; verificar integridad, equivalencia, rendimiento y recuperación automática |
+| 3 BFF (15 puntos) | Web, móvil y cajero | Revalidar respuestas y seguridad con la solución final |
+| 3 servicios clave (15 puntos) | Cuentas, movimientos y operaciones | Completar apertura/cierre/mantenimiento de cuentas; implementar pagos/transferencias/depósitos y gestión de clientes, con seguridad, resiliencia y Kafka |
+| Docker y escala horizontal en AWS (10 puntos) | Compose y despliegue previo | Incorporar componentes nuevos y demostrar varias instancias de los tres servicios exigidos y balanceo |
+| Documentación (10 puntos) | README y diagrama de semana 8 | Preparar `readme.md`, PDF con plantilla oficial, `instrucciones.md`, `despliegue.md` y MP4 de 5–7 minutos con webcam |
+
+Las métricas de Actuator para estados OPEN y HALF_OPEN se consideran una mejora útil para demostrar resiliencia. Authorization Code con PKCE es una propuesta futura; la retroalimentación valida el flujo `client_credentials` utilizado en semana 8.
+
+## Referencia de la solución de Semana 8
+
+Las siguientes secciones describen los componentes y la ejecución heredados. El diagrama y las etiquetas de imágenes de semana 8 se conservan como referencia hasta actualizar la implementación final.
 
 ## Arquitectura general
 
