@@ -71,7 +71,34 @@ Maven `verify` terminó con BUILD SUCCESS en los módulos bff-compartido, auth-s
 
 También se ejecutaron los JAR empaquetados del Authorization Server y los tres BFF. Con un certificado de prueba y verificación TLS activa, se comprobaron transferencia Web 201, pago móvil 201, saldo cajero 200, rechazo 401 sin token y 403 por scope insuficiente o cuenta ajena. Los tokens fueron emitidos y firmados por el servidor real; los servicios HTTP del backend estaban simulados. Se verificaron la conservación de solicitudId, la omisión de saldos del destinatario y las cabeceras de instancia seleccionada. Esta ejecución no realizó operaciones en una base de datos.
 
-La prueba real con los tres BFF, MySQL, Eureka, Kafka y réplicas en AWS sigue pendiente. Las pruebas automatizadas no sustituyen esa evidencia.
+### Evidencias integradas en AWS
+
+La ejecución en EC2 del 11 de octubre de 2026 comprobó los tres BFF con validación TLS activa y tokens emitidos por el Authorization Server. Se verificaron apertura, depósito, pago y transferencia Web; alta y actualización del cliente 900501 a perfil PREFERENTE, con las cuentas 900201 y 900202 vinculadas; pago móvil de 500 y retiro cajero de 1000. Los saldos finales observados fueron 5500 y 2000, respectivamente.
+
+Cuatro consultas por servicio mostraron dos IDs distintos en las cabeceras de MS-CUENTAS, MS-CLIENTES y MS-PAGOS, con HTTP 200. La prueba OAuth produjo 401 sin token, 403 por scope insuficiente o cuenta ajena y 401 al usar un token Web en móvil, por la validación del canal y audience.
+
+El reenvío de la transferencia existente `s9_aws_trans_001` devolvió el mismo comprobante y referencia; cambiar el monto con esa clave produjo 409. Ambos reenvíos conservaron los saldos actuales. El saldo histórico del comprobante original es 7000 y no reemplaza la consulta del saldo actual, 5500.
+
+MySQL confirmó cuatro operaciones aprobadas, cuatro eventos publicados en el outbox y cinco movimientos de pagos: una transferencia genera dos movimientos. Ambos grupos Kafka estaban Stable, con lag cero en las particiones con mensajes; las particiones vacías sin offset confirmado tenían log-end cero. El log del consumidor legado confirmó la referencia del retiro cajero. La presencia del tópico DLQ se verificó; no se inyectó una nueva falla para demostrar su consumo.
+
+Desde la raíz del repositorio en EC2, las verificaciones se ejecutan con Python 3:
+
+```bash
+python3 scripts/comprobar-balanceo-aws-s9.py
+python3 scripts/comprobar-canales-aws-s9.py
+python3 scripts/comprobar-seguridad-aws-s9.py
+python3 scripts/comprobar-kafka-aws-s9.py
+```
+
+Son pruebas del laboratorio con los IDs y saldos descritos. La prueba de canales guarda un control local del retiro cajero para evitar reenviarlo automáticamente si se pierde su respuesta. No borrar ese control para repetir un retiro.
+
+Para probar caída y recuperación con consultas de saldo:
+
+```bash
+python3 scripts/comprobar-resiliencia-aws-s9.py
+```
+
+Este último script detiene temporalmente las dos réplicas de MS-CUENTAS, exige el fallback 503 y restaura ambas antes de comprobar consultas 200 y saldos sin cambios. Antes de detenerlas programa un reinicio de rescate con systemd; también restaura ante fallos mediante `finally`. Su sintaxis y recuperación ante errores se verificaron con simulación; **su ejecución en AWS está pendiente**. No certifica los estados OPEN/HALF_OPEN de Actuator, cuyos endpoints de diagnóstico no están autorizados por las reglas actuales del BFF.
 
 ## Preparación de Docker y réplicas
 
