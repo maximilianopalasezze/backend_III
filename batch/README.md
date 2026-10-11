@@ -194,7 +194,7 @@ Prueba local del 10 de octubre de 2026: un hilo, chunk 50 y falla controlada des
 
 Resultados finales: 480 transacciones, 520 rechazos y 88 anomalías; 50 intereses y 950 rechazos; 684 movimientos anuales, 316 rechazos y 20 estados. Los intereses sumaron 2.525,00 y los saldos finales 413.525,00. Las comparaciones con las tablas conservadas de ejecuciones completas mostraron cero faltantes y cero diferencias en los campos de negocio revisados para transacciones, intereses, movimientos y estados. Repetir el lote de transacciones ya completado devolvió su ejecución existente sin crear otro intento.
 
-Esta evidencia acredita recuperación desde checkpoints ante una falla controlada del Step; la JVM permaneció activa. La comparación es contra ejecuciones completas de esta solución, no constituye todavía la comparación formal con el sistema legacy. La demostración de reintentos ante una falla transitoria real de base de datos también queda pendiente.
+Esta evidencia acredita recuperación desde checkpoints ante una falla controlada del Step; la JVM permaneció activa. La comparación es contra ejecuciones completas de esta solución, no constituye todavía la comparación formal con el sistema legacy. Los reintentos ante errores JDBC simulados se verificaron por separado, como se detalla a continuación; no se provocó una caída física de MySQL.
 
 
 ## Reintentos ante errores JDBC de conexion
@@ -211,4 +211,5 @@ Desde PowerShell, en `batch`, ejecutar la prueba nueva y las verificaciones de r
 .\mvnw.cmd -B "-Dtest=ReintentosBatchTests,RecuperacionBatchTests,ServicioControlReinicioTests,RecursoEntradaBatchTests" package
 ```
 
-Se esperan tres mensajes `REINTENTO BATCH OK`, un mensaje `ERROR PERMANENTE OK` y BUILD SUCCESS. La ejecucion nativa de esta ampliacion aun debe confirmarse; los resultados previos de recuperacion en MySQL no se atribuyen a estos tests nuevos.
+La ejecución nativa en PowerShell del 11 de octubre de 2026 mostró tres mensajes `REINTENTO BATCH OK`, uno `ERROR PERMANENTE OK` y `BUILD SUCCESS`: 14 pruebas, cero fallas, errores u omisiones. Cada caso JDBC registró un reintento, COMPLETED, 1000 lecturas, 480 escrituras, 520 rechazos y resultados idénticos a la ejecución completa. El error SQL permanente terminó en FAILED, con cero reintentos y escrituras, como exige la prueba. Se empaquetó `target/bank-batch-0.0.1-SNAPSHOT.jar`; el log del PC es `target/cierre-batch-s9.log` y la evidencia es la captura 100. La comprobación de recuperación MySQL documentada antes es una prueba distinta.
+
