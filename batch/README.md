@@ -195,3 +195,20 @@ Prueba local del 10 de octubre de 2026: un hilo, chunk 50 y falla controlada des
 Resultados finales: 480 transacciones, 520 rechazos y 88 anomalías; 50 intereses y 950 rechazos; 684 movimientos anuales, 316 rechazos y 20 estados. Los intereses sumaron 2.525,00 y los saldos finales 413.525,00. Las comparaciones con las tablas conservadas de ejecuciones completas mostraron cero faltantes y cero diferencias en los campos de negocio revisados para transacciones, intereses, movimientos y estados. Repetir el lote de transacciones ya completado devolvió su ejecución existente sin crear otro intento.
 
 Esta evidencia acredita recuperación desde checkpoints ante una falla controlada del Step; la JVM permaneció activa. La comparación es contra ejecuciones completas de esta solución, no constituye todavía la comparación formal con el sistema legacy. La demostración de reintentos ante una falla transitoria real de base de datos también queda pendiente.
+
+
+## Reintentos ante errores JDBC de conexion
+
+La politica del Step admite errores transitorios, recuperables y fallos del recurso de conexion (`TransientDataAccessException`, `RecoverableDataAccessException` y `DataAccessResourceFailureException`). Mantiene el limite de tres reintentos y la pausa configurada. No incluye errores de sintaxis SQL ni violaciones de integridad.
+
+`ReintentosBatchTests` ejecuta el Job real de transacciones con el CSV oficial y una base H2 exclusiva de la prueba. Antes de la primera escritura se inyecta una excepcion JDBC de conexion: transitoria, recuperable o SQLState 08006. La excepcion pasa por la traduccion de `JdbcTemplate`; el listener registra reintentos y la escritura siguiente utiliza el escritor real.
+
+Los casos exigen que el mismo Job termine en COMPLETED con una sola ejecucion, 1000 lecturas, 480 escrituras y 520 rechazos, sin duplicados y con los mismos campos bancarios que una ejecucion completa. Otro caso exige FAILED y cero reintentos para SQL invalido. Esto demuestra Retry del Step ante un fallo JDBC simulado; no desconecta MySQL ni representa una caida fisica de la base.
+
+Desde PowerShell, en `batch`, ejecutar la prueba nueva y las verificaciones de reinicio ya existentes:
+
+```powershell
+.\mvnw.cmd -B "-Dtest=ReintentosBatchTests,RecuperacionBatchTests,ServicioControlReinicioTests,RecursoEntradaBatchTests" package
+```
+
+Se esperan tres mensajes `REINTENTO BATCH OK`, un mensaje `ERROR PERMANENTE OK` y BUILD SUCCESS. La ejecucion nativa de esta ampliacion aun debe confirmarse; los resultados previos de recuperacion en MySQL no se atribuyen a estos tests nuevos.

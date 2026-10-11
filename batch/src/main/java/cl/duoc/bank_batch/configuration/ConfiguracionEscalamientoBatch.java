@@ -11,6 +11,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.dao.TransientDataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
@@ -61,7 +63,9 @@ public class ConfiguracionEscalamientoBatch {
 
         return RetryPolicy.builder()
                 .maxRetries(maximoReintentos)
-                .includes(TransientDataAccessException.class)
+                .includes(TransientDataAccessException.class,
+                        DataAccessResourceFailureException.class,
+                        RecoverableDataAccessException.class)
                 .delay(Duration.ofMillis(pausaMilisegundos))
                 .build();
     }
