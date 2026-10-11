@@ -13,7 +13,10 @@ public class ConfiguracionClienteBackend {
     @Bean
     @LoadBalanced
     public RestTemplate restTemplateBackend(PropiedadesServiciosBackend p) {
-        RestTemplate rest = new RestTemplate();
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(2000);
+        factory.setReadTimeout(5000);
+        RestTemplate rest = new RestTemplate(factory);
         rest.getInterceptors().add(new BasicAuthenticationInterceptor(p.usuario(), p.password()));
         return rest;
     }

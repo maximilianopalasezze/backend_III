@@ -65,8 +65,8 @@ public class ClienteServiciosBanco {
         return respuesta.getBody() == null ? List.of() : respuesta.getBody();
     }
 
+    // El contrato de retiro legado no tiene solicitudId: un reintento automático puede duplicar el cargo.
     @CircuitBreaker(name = "operacionesService", fallbackMethod = "fallbackRetiro")
-    @Retry(name = "operacionesService")
     public RetiroBackend retirar(Long cuentaId, BigDecimal monto) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

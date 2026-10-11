@@ -7,7 +7,10 @@ import org.springframework.security.oauth2.jwt.Jwt;
 @Component("accesoCuenta")
 public class AccesoCuenta {
     public boolean permitir(Authentication auth, Long cuentaId) {
-        return auth!=null && auth.getPrincipal() instanceof Jwt jwt && cuentaId!=null
-                && cuentaId.toString().equals(jwt.getClaimAsString("cuentaId"));
+        if (auth == null || !(auth.getPrincipal() instanceof Jwt jwt) || cuentaId == null) return false;
+        String id = cuentaId.toString();
+        if (id.equals(jwt.getClaimAsString("cuentaId"))) return true;
+        var cuentas = jwt.getClaimAsStringList("cuentas");
+        return cuentas != null && cuentas.contains(id);
     }
 }

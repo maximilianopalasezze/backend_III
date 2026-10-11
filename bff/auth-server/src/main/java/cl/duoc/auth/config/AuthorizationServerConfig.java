@@ -95,6 +95,8 @@ public class AuthorizationServerConfig {
                         AuthorizationGrantType.CLIENT_CREDENTIALS)
                 .scope("web:lectura")
                 .scope("web:resumen")
+                .scope("web:gestion")
+                .scope("web:pagos")
                 .build();
 
         RegisteredClient movil = RegisteredClient
@@ -106,6 +108,7 @@ public class AuthorizationServerConfig {
                 .authorizationGrantType(
                         AuthorizationGrantType.CLIENT_CREDENTIALS)
                 .scope("movil:lectura")
+                .scope("movil:pagos")
                 .build();
 
         RegisteredClient cajero = RegisteredClient
@@ -128,7 +131,16 @@ public class AuthorizationServerConfig {
     }
 
     @Bean
-    OAuth2TokenCustomizer<JwtEncodingContext> jwtTokenCustomizer() {
+    OAuth2TokenCustomizer<JwtEncodingContext> jwtTokenCustomizer(
+            @Value("${OAUTH_WEB_CUENTA_ID:102}") String web,
+            @Value("${OAUTH_MOVIL_CUENTA_ID:102}") String movil,
+            @Value("${OAUTH_CAJERO_CUENTA_ID:102}") String cajero,
+            @Value("${OAUTH_WEB_CUENTAS:}") String cuentasWeb,
+            @Value("${OAUTH_MOVIL_CUENTAS:}") String cuentasMovil,
+            @Value("${OAUTH_CAJERO_CUENTAS:}") String cuentasCajero) {
+        var idsWeb = cuentasAutorizadas(web, cuentasWeb);
+        var idsMovil = cuentasAutorizadas(movil, cuentasMovil);
+        var idsCajero = cuentasAutorizadas(cajero, cuentasCajero);
 
         return context -> {
 
@@ -145,21 +157,24 @@ public class AuthorizationServerConfig {
                 case "bff-web" -> {
                     context.getClaims()
                             .claim("canal", "WEB")
-                            .claim("cuentaId", "102")
+                            .claim("cuentaId", web)
+                            .claim("cuentas", idsWeb)
                             .audience(List.of("bff-web"));
                 }
 
                 case "bff-movil" -> {
                     context.getClaims()
                             .claim("canal", "MOVIL")
-                            .claim("cuentaId", "102")
+                            .claim("cuentaId", movil)
+                            .claim("cuentas", idsMovil)
                             .audience(List.of("bff-movil"));
                 }
 
                 case "bff-cajero" -> {
                     context.getClaims()
                             .claim("canal", "CAJERO")
-                            .claim("cuentaId", "102")
+                            .claim("cuentaId", cajero)
+                            .claim("cuentas", idsCajero)
                             .audience(List.of("bff-cajero"));
                 }
 
@@ -167,6 +182,21 @@ public class AuthorizationServerConfig {
                 }
             }
         };
+    }
+
+    // Asociación de cuentas definida únicamente en el servidor para el cliente de demostración.
+    private static List<String> cuentasAutorizadas(String principal, String adicionales) {
+        var ids = new java.util.LinkedHashSet<String>();
+        ids.add(principal);
+        if (!adicionales.isBlank()) {
+            for (String id : adicionales.split(",")) ids.add(id.trim());
+        }
+        for (String id : ids) {
+            if (!id.matches("[1-9][0-9]{0,18}")) throw new IllegalArgumentException("ID de cuenta OAuth2 inválido");
+            try { Long.parseLong(id); }
+            catch (NumberFormatException ex) { throw new IllegalArgumentException("ID de cuenta OAuth2 fuera de rango"); }
+        }
+        return List.copyOf(ids);
     }
 
     @Bean

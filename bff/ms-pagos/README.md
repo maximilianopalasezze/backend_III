@@ -14,7 +14,7 @@ El recibo conserva los saldos de esa operación; después de otras operaciones e
 
 En `bank_xyz_semana5_db`, aplicar [03-gestion-cuentas.sql](../sql/03-gestion-cuentas.sql) y [05-pagos.sql](../sql/05-pagos.sql). Para la integración completa, aplicar también la migración 04 de clientes. El script 05 crea `pagos_operaciones`, `pagos_outbox` y `movimientos_pagos`. Es repetible, conserva los datos y no crea cuentas de prueba. Compose lo monta para una base nueva; en un volumen existente debe ejecutarse manualmente antes de actualizar los servicios.
 
-Base interna local: `http://localhost:8095`. Todas las rutas `/api/**` requieren Basic Auth con rol `SERVICE`. Sin credenciales responden 401 y VIEWER recibe 403. Los BFF aplicarán además OAuth2, permisos de canal y acceso a la cuenta antes de invocar estos contratos.
+Base interna local: `http://localhost:8095`. Todas las rutas `/api/**` requieren Basic Auth con rol `SERVICE`. Sin credenciales responden 401 y VIEWER recibe 403. Los [BFF Web y móvil](../README-semana9.md) aplican además OAuth2, permisos de canal y acceso a la cuenta antes de invocar estos contratos.
 
 | Método | Ruta | Resultado |
 | --- | --- | --- |
@@ -59,7 +59,7 @@ Transferencia de 2000 desde 900201 hacia 900202:
 }
 ```
 
-Si se ejecutan una vez en ese orden, los saldos esperados son 7000 en 900201 y 2000 en 900202. Repetir solicitudes no cambia esos saldos. Son resultados esperados para la prueba local; su validación en PC está pendiente.
+Si se ejecutan una vez en ese orden, los saldos esperados son 7000 en 900201 y 2000 en 900202. Repetir solicitudes no cambia esos saldos. Postman confirmó las tres operaciones 201 y esos saldos de origen en sus recibos. La transferencia repetida devolvió la misma referencia `cd9f4c10-1403-4254-857b-de86669d4f52`. Cambiar su monto a 3000 con la misma clave produjo 409; también se verificaron el rechazo de depósito en la cuenta cerrada 900001 y de un pago de 8000 por saldo insuficiente. MySQL mostró tres eventos pendientes en `pagos_outbox`, sin intentos de envío. Falta cerrar la revisión de saldos maestros y filas de auditoría.
 
 ## Eventos y recuperación de publicación
 
@@ -96,4 +96,4 @@ Se verificaron persistencia de saldos, recibo y JSON, repetición de los tres ti
 
 Ambos JAR se empaquetaron. MS-PAGOS inició en 8095 usando la configuración local y `/actuator/info` respondió 200; MS-MOVIMIENTOS inició en 8092 con las dos fábricas de consumidores configuradas. Esas comprobaciones de arranque no consultaron MySQL ni validaron envío o consumo con un broker real.
 
-Quedan pendientes las pruebas de PC con MySQL/Postman, los contratos de los BFF con OAuth2 y Resilience4j, la entrega Kafka real y la ejecución con varias instancias en AWS.
+Los contratos BFF y su autorización/resiliencia aprobaron 50 pruebas seleccionadas; los JAR del Authorization Server y de los tres BFF también se verificaron con HTTPS y servicios HTTP simulados, como se detalla en [BFF de Semana 9](../README-semana9.md). Quedan pendientes la comprobación final de saldos maestros y auditoría en PC, la integración BFF con los microservicios reales, la entrega Kafka real y la ejecución con varias instancias en AWS.

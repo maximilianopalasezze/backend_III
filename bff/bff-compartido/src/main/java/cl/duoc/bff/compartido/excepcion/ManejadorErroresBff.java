@@ -29,15 +29,17 @@ public class ManejadorErroresBff {
         return construir(HttpStatus.SERVICE_UNAVAILABLE, excepcion.getMessage(), solicitud);
     }
 
-    @ExceptionHandler(SaldoInsuficienteException.class)
+    @ExceptionHandler({SaldoInsuficienteException.class, ConflictoNegocioException.class})
     public ResponseEntity<RespuestaErrorApi> manejarSaldoInsuficiente(
-            SaldoInsuficienteException excepcion,
+            RuntimeException excepcion,
             HttpServletRequest solicitud) {
 
         return construir(HttpStatus.CONFLICT, excepcion.getMessage(), solicitud);
     }
 
-    @ExceptionHandler({OperacionInvalidaException.class, MethodArgumentNotValidException.class})
+    @ExceptionHandler({OperacionInvalidaException.class, MethodArgumentNotValidException.class,
+            org.springframework.http.converter.HttpMessageNotReadableException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class})
     public ResponseEntity<RespuestaErrorApi> manejarSolicitudInvalida(
             Exception excepcion,
             HttpServletRequest solicitud) {
@@ -47,7 +49,8 @@ public class ManejadorErroresBff {
                     .findFirst()
                     .map(error -> error.getField() + ": " + error.getDefaultMessage())
                     .orElse("La solicitud contiene datos inválidos")
-                : excepcion.getMessage();
+                : excepcion instanceof OperacionInvalidaException ? excepcion.getMessage()
+                : "La solicitud contiene datos inválidos";
 
         return construir(HttpStatus.BAD_REQUEST, mensaje, solicitud);
     }

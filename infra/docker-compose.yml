@@ -97,7 +97,7 @@ services:
   config-server:
     build:
       context: ../bff/config-server
-    image: banco-xyz/config-server:semana8
+    image: banco-xyz/config-server:semana9
     container_name: backend-config-server
     restart: unless-stopped
     ports:
@@ -116,7 +116,7 @@ services:
   discovery-server:
     build:
       context: ../bff/discovery-server
-    image: banco-xyz/discovery-server:semana8
+    image: banco-xyz/discovery-server:semana9
     container_name: backend-discovery-server
     restart: unless-stopped
     ports:
@@ -131,7 +131,7 @@ services:
   auth-server:
     build:
       context: ../bff/auth-server
-    image: banco-xyz/auth-server:semana8
+    image: banco-xyz/auth-server:semana9
     container_name: backend-auth-server
     restart: unless-stopped
     ports:
@@ -141,6 +141,12 @@ services:
       OAUTH_MOVIL_SECRET: ${OAUTH_MOVIL_SECRET:?Define OAUTH_MOVIL_SECRET}
       OAUTH_CAJERO_SECRET: ${OAUTH_CAJERO_SECRET:?Define OAUTH_CAJERO_SECRET}
       OAUTH_ISSUER: http://localhost:9000
+      OAUTH_WEB_CUENTA_ID: "${OAUTH_WEB_CUENTA_ID:-102}"
+      OAUTH_MOVIL_CUENTA_ID: "${OAUTH_MOVIL_CUENTA_ID:-102}"
+      OAUTH_CAJERO_CUENTA_ID: "${OAUTH_CAJERO_CUENTA_ID:-102}"
+      OAUTH_WEB_CUENTAS: "${OAUTH_WEB_CUENTAS:-}"
+      OAUTH_MOVIL_CUENTAS: "${OAUTH_MOVIL_CUENTAS:-}"
+      OAUTH_CAJERO_CUENTAS: "${OAUTH_CAJERO_CUENTAS:-}"
       EUREKA_URL: http://discovery-server:8761/eureka/
       EUREKA_INSTANCE_HOSTNAME: auth-server
     depends_on:
@@ -160,15 +166,12 @@ services:
   ms-cuentas:
     build:
       context: ../bff/ms-cuentas
-    image: banco-xyz/ms-cuentas:semana8
-    container_name: backend-ms-cuentas
+    image: banco-xyz/ms-cuentas:semana9
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8091:8091"
     environment:
       SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      EUREKA_INSTANCE_HOSTNAME: ms-cuentas
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
       SERVER_ADDRESS: 0.0.0.0
       DB_URL: jdbc:mysql://mysql:3306/bank_xyz_semana5_db?useSSL=false&serverTimezone=America/Santiago&allowPublicKeyRetrieval=true
       DB_USER: bank_batch_user
@@ -254,7 +257,7 @@ services:
   ms-movimientos:
     build:
       context: ../bff/ms-movimientos
-    image: banco-xyz/ms-movimientos:semana8
+    image: banco-xyz/ms-movimientos:semana9
     container_name: backend-ms-movimientos
     restart: unless-stopped
     ports:
@@ -289,7 +292,7 @@ services:
   ms-operaciones:
     build:
       context: ../bff/ms-operaciones
-    image: banco-xyz/ms-operaciones:semana8
+    image: banco-xyz/ms-operaciones:semana9
     container_name: backend-ms-operaciones
     restart: unless-stopped
     ports:
@@ -324,7 +327,7 @@ services:
   bff-web:
     build:
       context: ../bff/bff-web
-    image: banco-xyz/bff-web:semana8
+    image: banco-xyz/bff-web:semana9
     container_name: backend-bff-web
     restart: unless-stopped
     ports:
@@ -351,6 +354,10 @@ services:
         condition: service_healthy
       ms-operaciones:
         condition: service_healthy
+      ms-clientes:
+        condition: service_healthy
+      ms-pagos:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -kfsS https://localhost:8081/actuator/health >/dev/null"]
       interval: 10s
@@ -361,7 +368,7 @@ services:
   bff-movil:
     build:
       context: ../bff/bff-movil
-    image: banco-xyz/bff-movil:semana8
+    image: banco-xyz/bff-movil:semana9
     container_name: backend-bff-movil
     restart: unless-stopped
     ports:
@@ -386,6 +393,8 @@ services:
         condition: service_healthy
       ms-movimientos:
         condition: service_healthy
+      ms-pagos:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -kfsS https://localhost:8082/actuator/health >/dev/null"]
       interval: 10s
@@ -396,7 +405,7 @@ services:
   bff-cajero:
     build:
       context: ../bff/bff-cajero
-    image: banco-xyz/bff-cajero:semana8
+    image: banco-xyz/bff-cajero:semana9
     container_name: backend-bff-cajero
     restart: unless-stopped
     ports:

@@ -40,7 +40,7 @@ public class ConfiguracionSeguridadBff {
         OAuth2TokenValidator<Jwt> claimsValidator = jwt -> {
 
             boolean audienceOk =
-                    jwt.getAudience().contains(
+                    jwt.getAudience() != null && jwt.getAudience().contains(
                             p.audience()
                     );
 
@@ -52,11 +52,13 @@ public class ConfiguracionSeguridadBff {
             String cuentaId =
                     jwt.getClaimAsString("cuentaId");
 
-            boolean cuentaOk =
-                    cuentaId != null &&
-                    !cuentaId.isBlank();
+            boolean cuentaOk = cuentaValida(cuentaId);
+            Object cuentas = jwt.getClaims().get("cuentas");
+            boolean cuentasOk = cuentas == null || (cuentas instanceof java.util.List<?> ids
+                    && ids.contains(cuentaId)
+                    && ids.stream().allMatch(id -> id instanceof String valor && cuentaValida(valor)));
 
-            if (audienceOk && canalOk && cuentaOk) {
+            if (audienceOk && canalOk && cuentaOk && cuentasOk) {
                 return OAuth2TokenValidatorResult.success();
             }
 
@@ -105,36 +107,31 @@ public class ConfiguracionSeguridadBff {
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .logout(logout -> logout.disable())
-                .authorizeHttpRequests(auth -> auth
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers("/actuator/health", "/actuator/info").permitAll();
+                    auth.requestMatchers(HttpMethod.GET, base + "/resumen")
+                            .hasAuthority("SCOPE_" + canal + ":resumen");
+                    auth.requestMatchers(HttpMethod.GET, base + "/cuentas/**")
+                            .hasAuthority("SCOPE_" + canal + ":lectura");
 
-                        .requestMatchers(
-                                "/actuator/health",
-                                "/actuator/info"
-                        ).permitAll()
-
-                        .requestMatchers(
-                                HttpMethod.GET,
-                                base + "/resumen"
-                        ).hasAuthority(
-                                "SCOPE_" + canal + ":resumen"
-                        )
-
-                        .requestMatchers(
-                                HttpMethod.GET,
-                                base + "/cuentas/**"
-                        ).hasAuthority(
-                                "SCOPE_" + canal + ":lectura"
-                        )
-
-                        .requestMatchers(
-                                HttpMethod.POST,
-                                base + "/cuentas/*/retiros"
-                        ).hasAuthority(
-                                "SCOPE_cajero:retiro"
-                        )
-
-                        .anyRequest().denyAll()
-                )
+                    if (p.canal() == PropiedadesBff.Canal.WEB) {
+                        auth.requestMatchers(HttpMethod.POST, base + "/cuentas",
+                                base + "/cuentas/*/cierre", base + "/cuentas/*/cliente",
+                                base + "/cuentas/*/cliente/cuentas").hasAuthority("SCOPE_web:gestion");
+                        auth.requestMatchers(HttpMethod.PUT, base + "/cuentas/*",
+                                base + "/cuentas/*/cliente").hasAuthority("SCOPE_web:gestion");
+                    }
+                    if (p.canal() == PropiedadesBff.Canal.WEB || p.canal() == PropiedadesBff.Canal.MOVIL) {
+                        auth.requestMatchers(HttpMethod.POST, base + "/cuentas/*/depositos",
+                                base + "/cuentas/*/pagos", base + "/cuentas/*/transferencias")
+                                .hasAuthority("SCOPE_" + canal + ":pagos");
+                    }
+                    if (p.canal() == PropiedadesBff.Canal.CAJERO) {
+                        auth.requestMatchers(HttpMethod.POST, base + "/cuentas/*/retiros")
+                                .hasAuthority("SCOPE_cajero:retiro");
+                    }
+                    auth.anyRequest().denyAll();
+                })
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(
                                 (req, res, error) ->
@@ -176,6 +173,12 @@ public class ConfiguracionSeguridadBff {
                 );
 
         return http.build();
+    }
+
+    private static boolean cuentaValida(String valor) {
+        if (valor == null || !valor.matches("[1-9][0-9]{0,18}")) return false;
+        try { return Long.parseLong(valor) > 0; }
+        catch (NumberFormatException ex) { return false; }
     }
 
     private static void responderError(
