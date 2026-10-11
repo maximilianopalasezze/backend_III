@@ -4,7 +4,7 @@ Componente Maven independiente recuperado de `main`, commit `354050a1ed5380a5f57
 
 ## Integración y datos de entrada
 
-La conexión predeterminada utiliza **bank_xyz_semana5_db**, la misma base de la solución de semana 8. Se conservan `DB_URL`, `DB_USER` y `DB_PASSWORD` para configurar el entorno. El usuario predeterminado es `bank_batch_user`, igual al definido en Docker Compose.
+La conexión predeterminada utiliza **bank_xyz_semana5_db**, la base conservada por la solución integrada. Se conservan `DB_URL`, `DB_USER` y `DB_PASSWORD` para configurar el entorno. El usuario predeterminado es `bank_batch_user`, igual al definido en Docker Compose.
 
 Los archivos de esta evaluación provienen de [fin_legacy_data](https://github.com/KariVillagran/fin_legacy_data), directorio `data/semana_3`, y se incluyen con sus nombres originales en `src/main/resources/data/semana_9`. Cada archivo tiene 1.000 registros más encabezado. Su contenido es distinto al de los archivos recuperados de `main`; por ello, los resultados históricos de semana 3 no son evidencia de esta evaluación.
 
@@ -77,7 +77,7 @@ No se ejecutó ningún Job sobre la base de EC2 durante esta integración.
 
 ## Estado de verificación
 
-Paso 1: integración del componente y configuración de entradas. Se verificaron la estructura, los tres Jobs, los encabezados y cantidades de registros, y la coincidencia de los esquemas de tablas de negocio con el SQL de semana 8.
+Paso 1: integración del componente y configuración de entradas. Se verificaron la estructura, los tres Jobs, los encabezados y cantidades de registros, y la coincidencia de los esquemas de tablas de negocio con el SQL inicial del banco.
 
 La compilacion inicial y los tres Jobs se verificaron en el PC con MySQL. Se ejecutaron con 1 y 3 hilos, chunk 50, y todos terminaron en `COMPLETED`. Las consultas por transaccion/cuenta confirmaron cero faltantes y cero diferencias en los datos comparados (excluidos IDs internos y fechas de procesamiento).
 
@@ -211,5 +211,5 @@ Desde PowerShell, en `batch`, ejecutar la prueba nueva y las verificaciones de r
 .\mvnw.cmd -B "-Dtest=ReintentosBatchTests,RecuperacionBatchTests,ServicioControlReinicioTests,RecursoEntradaBatchTests" package
 ```
 
-La ejecución nativa en PowerShell del 11 de octubre de 2026 mostró tres mensajes `REINTENTO BATCH OK`, uno `ERROR PERMANENTE OK` y `BUILD SUCCESS`: 14 pruebas, cero fallas, errores u omisiones. Cada caso JDBC registró un reintento, COMPLETED, 1000 lecturas, 480 escrituras, 520 rechazos y resultados idénticos a la ejecución completa. El error SQL permanente terminó en FAILED, con cero reintentos y escrituras, como exige la prueba. Se empaquetó `target/bank-batch-0.0.1-SNAPSHOT.jar`; el log del PC es `target/cierre-batch-s9.log` y la evidencia es la captura 100. La comprobación de recuperación MySQL documentada antes es una prueba distinta.
+La ejecución nativa en PowerShell del 11 de octubre de 2026 mostró tres mensajes `REINTENTO BATCH OK`, uno `ERROR PERMANENTE OK` y `BUILD SUCCESS`: 14 pruebas, cero fallas, errores u omisiones. Cada caso JDBC registró un reintento, COMPLETED, 1000 lecturas, 480 escrituras, 520 rechazos y resultados idénticos a la ejecución completa. El error SQL permanente terminó en FAILED, con cero reintentos y escrituras, como exige la prueba. Se empaquetó `target/bank-batch-0.0.1-SNAPSHOT.jar`; el log del PC es `target/cierre-batch-s9.log`. La comprobación de recuperación MySQL documentada antes es una prueba distinta.
 

@@ -1,19 +1,18 @@
 # Banco XYZ — Backend III, Semana 9
 
-Evaluación Final Transversal: tres procesos Spring Batch, servicios bancarios, BFF por canal, OAuth2, HTTPS, Spring Cloud, Resilience4j, Kafka y Docker Compose. Continúa la solución de Semana 8 y conserva `bank_xyz_semana5_db`.
+Evaluación Final Transversal: tres procesos Spring Batch, servicios bancarios, BFF por canal, OAuth2, HTTPS, Spring Cloud, Resilience4j, Kafka y Docker Compose. Integra los componentes del banco y conserva su base de datos `bank_xyz_semana5_db`.
 
 **Código:** [rama semana9-evaluacion-final](https://github.com/maximilianopalasezze/backend_III/tree/semana9-evaluacion-final).
 
-## Documentación de entrega
+## Documentación
 
-- [readme.md](entrega-semana9/readme.md): presentación y enlace al código.
-- [instrucciones.md](entrega-semana9/instrucciones.md): ejecución y pruebas paso a paso.
-- [despliegue.md](entrega-semana9/despliegue.md): configuración y despliegue AWS.
+- [instrucciones.md](instrucciones.md): compilación, ejecución y pruebas de los componentes.
+- [despliegue.md](despliegue.md): preparación, certificados, migraciones y despliegue en AWS.
 - [Arquitectura, casos de uso y componentes](docs/arquitectura-s9.md).
-- [Resultados e índice de capturas](docs/evidencias-s9.md).
-- [Guion del video](docs/guion-video-s9.md).
+- [Procesamiento Spring Batch](batch/README.md).
+- [Contratos y seguridad de los BFF](bff/README-semana9.md).
 
-El informe PDF debe aplicar la plantilla oficial `PBY2203_EFT_S9_plantilla_PDF` del AVA. El video MP4 debe durar 5–7 minutos e incluir webcam. Ambos se incorporan a `entrega-semana9` cuando estén terminados.
+El informe técnico PDF con la plantilla oficial y el video MP4 de 5–7 minutos con webcam se adjuntan en la entrega de la actividad, junto con `readme.md`, `instrucciones.md` y `despliegue.md`.
 
 ## Componentes
 
@@ -46,4 +45,4 @@ Batch se ejecutó en PC con MySQL y sus tests usan H2 aislada; no se ejecutó so
 
 El laboratorio tiene una sola EC2, MySQL, Kafka y Authorization Server. Las réplicas demuestran balanceo y recuperación dentro del host. Se verificó la existencia de la DLQ sin inyectar una nueva falla. La prueba AWS acredita fallback y recuperación, sin observar OPEN/HALF_OPEN mediante Actuator.
 
-Consultar las [instrucciones](entrega-semana9/instrucciones.md). Los secretos se configuran en `.env.docker.local`, fuera de Git. Batch permanece desactivado durante la demostración bancaria integrada: el Job de intereses carga saldos históricos.
+Consultar las [instrucciones](instrucciones.md). Los secretos se configuran en `.env.docker.local`, fuera de Git. Batch permanece desactivado durante la demostración bancaria integrada: el Job de intereses carga saldos históricos.

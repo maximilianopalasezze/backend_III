@@ -92,4 +92,4 @@ Validación en PC con MySQL y Postman, 10 de octubre de 2026: el reactor complet
 
 Las capturas muestran pruebas secuenciales en MySQL. La competencia entre dos actualizaciones simultáneas se verificó en las pruebas automatizadas con H2.
 
-Quedan pendientes las rutas en los BFF con OAuth2 y Resilience4j y la ejecución en AWS. MS-CLIENTES no publica eventos bancarios; los eventos de retiros existentes se gestionan en MS-OPERACIONES/Kafka.
+La integración final en EC2 verificó MS-CLIENTES mediante BFF Web con OAuth2, HTTPS y Resilience4j. El cliente 900501 quedó con perfil PREFERENTE, versión 1 y cuentas 900201/900202 vinculadas. Se registraron dos réplicas en Eureka y cuatro consultas 200 mostraron dos IDs de instancia distintos. MS-CLIENTES no publica eventos bancarios; MS-PAGOS y MS-OPERACIONES producen los eventos de operaciones.

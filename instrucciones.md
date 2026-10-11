@@ -31,7 +31,7 @@ Select-String -Path .\target\cierre-batch-s9.log -Pattern "REINTENTO BATCH OK|ER
 Pop-Location
 ```
 
-Resultado observado: 14 pruebas sin fallas, errores u omisiones; captura 100. Cada caso JDBC registró un reintento y COMPLETED con 1000 lecturas, 480 escrituras, 520 rechazos y datos idénticos. SQL inválido produce FAILED, cero Retry/escrituras de forma deliberada; la prueba es exitosa.
+Resultado observado: 14 pruebas sin fallas, errores u omisiones. Cada caso JDBC registró un reintento y COMPLETED con 1000 lecturas, 480 escrituras, 520 rechazos y datos idénticos. SQL inválido produce FAILED, cero Retry/escrituras de forma deliberada; la prueba es exitosa.
 
 Verificaciones seleccionadas de autorización y BFF:
 
@@ -120,9 +120,32 @@ Importar `banco_xyz_s9_ca.pem` como CA en Postman con verificación SSL activada
 
 El servidor fija canal/audience/cuentas. En este laboratorio los clientes tienen cuenta principal 900201; Web también autoriza 900202/900203. Los [contratos BFF](https://github.com/maximilianopalasezze/backend_III/blob/semana9-evaluacion-final/bff/README-semana9.md) detallan rutas y JSON.
 
-Los pagos requieren `solicitudId`: una operación nueva usa clave nueva; una repetición conserva clave/cuerpo y devuelve el recibo histórico. Cambiar el cuerpo con esa clave produce 409. El retiro legado no tiene clave idempotente; la prueba ya retiró 1000 y conserva un control local. No borrar ese control ni repetir el retiro para grabar el video.
+Los pagos requieren `solicitudId`: una operación nueva usa clave nueva; una repetición conserva clave/cuerpo y devuelve el recibo histórico. Cambiar el cuerpo con esa clave produce 409. El retiro legado no tiene clave idempotente; la prueba ya retiró 1000 y conserva un control local. Conservar ese control al repetir las comprobaciones; una respuesta incierta del retiro requiere revisar el saldo antes de reenviarlo.
 
-## 7. Verificación integrada y capturas
+### Preparar el escenario en una base de prueba nueva
+
+Los helpers de integración usan las cuentas 900201/900202, el cliente 900501 y claves conocidas. Para reproducir ese escenario desde cero, configurar en `.env.docker.local` la cuenta principal de los tres clientes OAuth2 como 900201 y agregar 900202/900203 a `OAUTH_WEB_CUENTAS` antes de iniciar el Authorization Server. Usar un token Web con scopes de lectura, gestión y pagos.
+
+1. Abrir 900201 y 900202 con `POST https://localhost:8081/api/bff/web/cuentas`. Para cada una enviar `{"cuentaId":900201,"nombre":"Cuenta de prueba S9","edad":30,"tipoCuenta":"corriente"}`, cambiando el ID en la segunda. Ambas comienzan con saldo cero.
+2. Crear el cliente con `POST /cuentas/900201/cliente` y `{"clienteId":900501,"nombre":"Cliente Prueba S9 AWS","email":"cliente.s9@example.test","telefono":"+56900000001","direccion":"Direccion de prueba S9","perfil":"ESTANDAR"}`. Vincular la segunda cuenta con `POST /cuentas/900201/cliente/cuentas` y `{"cuentaId":900202}`.
+3. Actualizar mediante `PUT /cuentas/900201/cliente`, enviando los mismos datos personales, `"perfil":"PREFERENTE"` y `"version":0`. La respuesta debe tener versión 1.
+4. Ejecutar una vez las tres operaciones Web de la tabla. Las rutas relativas usan la base `https://localhost:8081/api/bff/web` y scope `web:pagos`.
+
+| Ruta POST | Cuerpo JSON |
+| --- | --- |
+| `/cuentas/900201/depositos` | `{"solicitudId":"s9_aws_dep_001","monto":10000,"concepto":"Deposito prueba Semana 9 AWS"}` |
+| `/cuentas/900201/pagos` | `{"solicitudId":"s9_aws_pago_001","monto":1000,"beneficiario":"Servicio de prueba","concepto":"Pago prueba Semana 9 AWS"}` |
+| `/cuentas/900201/transferencias` | `{"solicitudId":"s9_aws_trans_001","cuentaDestinoId":900202,"monto":2000,"concepto":"Transferencia prueba Semana 9 AWS"}` |
+
+La respuesta de cada operación es 201. Los saldos quedan en 7000/2000. Completar los dos canales restantes desde la raíz en EC2:
+
+```bash
+python3 scripts/comprobar-canales-aws-s9.py
+```
+
+Este helper realiza el pago móvil de 500 y el retiro cajero de 1000, dejando saldos 5500/2000. El pago conserva una clave idempotente y el retiro registra un control local. En una instalación existente con ese escenario completado, conservar las claves, los cuerpos y el control de retiro; no volver a abrir ni cargar las cuentas como si fueran nuevas.
+
+## 7. Verificación integrada
 
 Desde la raíz del repositorio en EC2:
 
@@ -134,4 +157,12 @@ python3 scripts/comprobar-kafka-aws-s9.py
 
 Los helpers consultan balanceo, autorización, reenvío de la transferencia existente, saldos, outbox y consumo. Usan los datos de esta demostración; no inicializan un banco genérico. El helper de canales creó el pago/retiro original y protege su repetición.
 
-`scripts/comprobar-resiliencia-aws-s9.py` detiene ambas réplicas de cuentas, programa rescate systemd y las restaura antes de exigir 200 y saldos conservados. Esa ejecución ya terminó: usar capturas 98–99 sin repetir la interrupción. Seleccionar capturas con el [índice de evidencias](https://github.com/maximilianopalasezze/backend_III/blob/semana9-evaluacion-final/docs/evidencias-s9.md). Los saldos finales son 5500/2000.
+La prueba de resiliencia se ejecuta con:
+
+```bash
+python3 scripts/comprobar-resiliencia-aws-s9.py
+```
+
+Detiene ambas réplicas de cuentas, programa un rescate con systemd y las restaura antes de exigir consultas 200 y saldos conservados. Esta comprobación interrumpe temporalmente el servicio y se utiliza en el entorno de prueba. En la validación final produjo tres respuestas 503 controladas, restauró ambas réplicas en healthy y recuperó consultas 200. Los saldos finales observados fueron 5500/2000.
+
+Los contratos de apertura, mantenimiento, cierre, clientes y pagos y sus ejemplos JSON se documentan en los README de [cuentas](bff/ms-cuentas/README.md), [clientes](bff/ms-clientes/README.md), [pagos](bff/ms-pagos/README.md) y [BFF](bff/README-semana9.md).

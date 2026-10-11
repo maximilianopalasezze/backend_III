@@ -59,7 +59,7 @@ Transferencia de 2000 desde 900201 hacia 900202:
 }
 ```
 
-Si se ejecutan una vez en ese orden, los saldos esperados son 7000 en 900201 y 2000 en 900202. Repetir solicitudes no cambia esos saldos. Postman confirmó las tres operaciones 201 y esos saldos de origen en sus recibos. La transferencia repetida devolvió la misma referencia `cd9f4c10-1403-4254-857b-de86669d4f52`. Cambiar su monto a 3000 con la misma clave produjo 409; también se verificaron el rechazo de depósito en la cuenta cerrada 900001 y de un pago de 8000 por saldo insuficiente. MySQL mostró tres eventos pendientes en `pagos_outbox`, sin intentos de envío. Falta cerrar la revisión de saldos maestros y filas de auditoría.
+Si se ejecutan una vez en ese orden, los saldos esperados son 7000 en 900201 y 2000 en 900202. Repetir solicitudes no cambia esos saldos. Postman confirmó las tres operaciones 201 y esos saldos de origen en sus recibos. La transferencia repetida devolvió la misma referencia `cd9f4c10-1403-4254-857b-de86669d4f52`. Cambiar su monto a 3000 con la misma clave produjo 409; también se verificaron el rechazo de depósito en la cuenta cerrada 900001 y de un pago de 8000 por saldo insuficiente. MySQL mostró tres eventos pendientes en `pagos_outbox`, sin intentos de envío. Ese resultado corresponde al ensayo aislado sin publicación. En la integración final EC2 se verificaron los saldos maestros, el outbox publicado y los movimientos proyectados, como se detalla al final de este documento.
 
 ## Eventos y recuperación de publicación
 
@@ -67,7 +67,7 @@ El evento JSON completo se guarda en `pagos_outbox` dentro de la transacción ba
 
 MS-MOVIMIENTOS consume `pagos.procesados` con el grupo `ms-movimientos-pagos-group`, registra depósitos y pagos, y guarda la salida y entrada de una transferencia en una transacción. La clave `(referencia, cuenta_id)` evita duplicados en reentregas. Una referencia con otros datos se rechaza y conserva el movimiento anterior. El consumidor no vuelve a modificar los saldos maestros. La consulta de movimientos combina esta proyección con los movimientos anuales del legado.
 
-El consumidor comparte el manejo de errores existente: dos reintentos separados por dos segundos y envío a `operaciones.fallidas` cuando se agotan. Los eventos enviados a esa DLQ requieren revisión y reentrega tras resolver la causa. La publicación y el consumo con un broker real se comprobarán durante la integración.
+El consumidor comparte el manejo de errores existente: dos reintentos separados por dos segundos y envío a `operaciones.fallidas` cuando se agotan. Los eventos enviados a esa DLQ requieren revisión y reentrega tras resolver la causa. La integración final comprobó publicación y consumo con el broker Kafka real de EC2; los grupos estuvieron estables y sin atraso en las particiones con mensajes.
 
 ## Compilación y arranque local
 
@@ -96,4 +96,4 @@ Se verificaron persistencia de saldos, recibo y JSON, repetición de los tres ti
 
 Ambos JAR se empaquetaron. MS-PAGOS inició en 8095 usando la configuración local y `/actuator/info` respondió 200; MS-MOVIMIENTOS inició en 8092 con las dos fábricas de consumidores configuradas. Esas comprobaciones de arranque no consultaron MySQL ni validaron envío o consumo con un broker real.
 
-Los contratos BFF y su autorización/resiliencia aprobaron 50 pruebas seleccionadas; los JAR del Authorization Server y de los tres BFF también se verificaron con HTTPS y servicios HTTP simulados, como se detalla en [BFF de Semana 9](../README-semana9.md). Quedan pendientes la comprobación final de saldos maestros y auditoría en PC, la integración BFF con los microservicios reales, la entrega Kafka real y la ejecución con varias instancias en AWS.
+Los contratos BFF y su autorización/resiliencia aprobaron 50 pruebas seleccionadas; los JAR del Authorization Server y de los tres BFF también se verificaron con HTTPS y servicios HTTP simulados, como se detalla en [BFF de Semana 9](../README-semana9.md). La integración final en EC2 comprobó los microservicios reales mediante los tres BFF con OAuth2 y TLS verificado. MySQL mostró cuatro operaciones de pagos aprobadas, cuatro eventos outbox publicados y cinco movimientos proyectados; la transferencia genera dos. Repetir la transferencia conservó el recibo original y otro monto con su clave produjo 409. Tras el pago móvil y el retiro cajero, los saldos quedaron en 5500/2000. Dos réplicas de MS-PAGOS atendieron consultas 200 con IDs distintos; los grupos Kafka confirmaron el consumo sin atraso en las particiones con mensajes.

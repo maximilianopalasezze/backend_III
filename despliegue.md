@@ -1,10 +1,10 @@
 # Banco XYZ — Despliegue AWS
 
-Guía reproducible para [Semana 9](https://github.com/maximilianopalasezze/backend_III/tree/semana9-evaluacion-final). Los identificadores, direcciones y rutas privadas de la instancia se completan en el entorno local; no se publican aquí.
+Guía reproducible para [Semana 9](https://github.com/maximilianopalasezze/backend_III/tree/semana9-evaluacion-final). Los valores de conexión se completan con los datos del entorno donde se despliega el proyecto.
 
 ## 1. Requisitos y acceso
 
-Usar una EC2 Linux con Git, Docker Engine, complemento Docker Compose y Python 3. La demostración utilizó Amazon Linux 2023. Verificar estado Running, asociación de la IP elástica y una regla SSH cuyo origen sea la conexión del operador. Los servicios se consultan mediante túnel SSH.
+Usar una EC2 Linux con Git, Docker Engine, complemento Docker Compose, Python 3 y Java 17 (incluido keytool). La demostración utilizó Amazon Linux 2023. Verificar estado Running, asociación de la IP elástica y una regla SSH cuyo origen sea la conexión del operador. Los servicios se consultan mediante túnel SSH.
 
 Definir en PowerShell los datos de la propia instancia:
 
@@ -41,6 +41,19 @@ nano .env.docker.local
 
 Completar las contraseñas MySQL, Basic Auth, TLS y secretos OAuth con los valores del entorno privado. Configurar las cuentas de demostración mediante `OAUTH_*_CUENTA_ID` y las listas `OAUTH_*_CUENTAS`. No publicar `.env.docker.local`.
 
+Para reproducir el escenario de las verificaciones de Semana 9, definir:
+
+```dotenv
+OAUTH_WEB_CUENTA_ID=900201
+OAUTH_MOVIL_CUENTA_ID=900201
+OAUTH_CAJERO_CUENTA_ID=900201
+OAUTH_WEB_CUENTAS=900201,900202,900203
+OAUTH_MOVIL_CUENTAS=
+OAUTH_CAJERO_CUENTAS=
+```
+
+Los IDs autorizan el acceso del canal; las cuentas y el cliente se crean mediante la API según [instrucciones.md](instrucciones.md). El archivo de ejemplo conserva 102 como cuenta predeterminada para consultar los datos iniciales del banco.
+
 En una instancia existente conservar configuración y certificados; actualizar con `git pull --ff-only` en esta rama. Los cambios de documentación y tests Batch no requieren reconstruir servicios que ya están healthy.
 
 ## 3. JAR y TLS
@@ -55,9 +68,30 @@ foreach ($moduloS9 in $modulosS9) {
 }
 ```
 
-Los BFF usan keystores PKCS12 montados desde `infra/certs`. Conservar los certificados existentes y su contraseña. El script `infra/generar-tls.sh` prepara certificados de laboratorio para una instalación nueva; ejecutarlo sobre los existentes los reemplaza.
+Los BFF usan keystores PKCS12 montados desde `bff/tls`. Conservar los certificados existentes y su contraseña. El script `infra/generar-tls.sh` prepara certificados de laboratorio para una instalación nueva; ejecutarlo sobre los existentes los reemplaza.
 
-Exportar únicamente los certificados públicos de confianza en el bundle `banco_xyz_s9_ca.pem` e importarlo como CA de Postman con SSL activo. Las pruebas Python verifican CA y hostname. No transferir ni publicar las claves privadas. El bundle debe estar en la ubicación que esperan los helpers de verificación, definida en su código.
+Para una instalación nueva, generar los keystores con la misma contraseña definida en `.env.docker.local`. Estos comandos se ejecutan desde la raíz y requieren keytool de Java 17:
+
+```bash
+read -rs -p 'Contraseña BFF_TLS_PASSWORD: ' claveTlsS9
+printf '\n'
+export BFF_TLS_PASSWORD="$claveTlsS9"
+bash infra/generar-tls.sh
+bundleS9="$HOME/banco_xyz_s9_ca.pem"
+: > "$bundleS9"
+for canalS9 in web movil cajero; do
+    keytool -exportcert -rfc -alias bff-tls -keystore "bff/tls/$canalS9.p12" -storepass:env BFF_TLS_PASSWORD >> "$bundleS9"
+done
+unset BFF_TLS_PASSWORD claveTlsS9
+```
+
+Los helpers del laboratorio esperan ese bundle en el directorio personal de `ec2-user`. Desde PowerShell se puede copiar solo el archivo público:
+
+```powershell
+scp -i $claveEc2S9 "ec2-user@${ipEc2S9}:banco_xyz_s9_ca.pem" .\banco_xyz_s9_ca.pem
+```
+
+Importar `banco_xyz_s9_ca.pem` como CA de Postman con SSL activo. Las pruebas Python verifican CA y hostname. Los keystores permanecen en `bff/tls`, fuera de Git, y Compose los monta como `/certs` dentro de cada BFF.
 
 ## 4. MySQL y migraciones
 
@@ -110,6 +144,6 @@ El issuer del laboratorio es `http://localhost:9000`. MySQL y servicios de negoc
 
 ## 7. Validación y límites
 
-Eureka y tráfico real demostraron dos réplicas por servicio crítico. Se verificaron canales, OAuth, idempotencia, outbox/Kafka y recuperación de cuentas sin cambios de saldo. Consultar el [índice de capturas](https://github.com/maximilianopalasezze/backend_III/blob/semana9-evaluacion-final/docs/evidencias-s9.md).
+Eureka y tráfico real demostraron dos réplicas por servicio crítico. Se verificaron canales, OAuth, idempotencia, outbox/Kafka y recuperación de cuentas sin cambios de saldo. Los comandos de comprobación están en [instrucciones.md](instrucciones.md) y las capturas seleccionadas se incluyen en el informe técnico PDF de la actividad.
 
 La disponibilidad del laboratorio depende de una sola EC2 y MySQL/Kafka/autorización únicos. Se propone varias zonas, servicios administrados, métricas del Circuit Breaker y PKCE para usuarios finales. Batch se verificó en PC; no cargó CSV históricos sobre EC2.

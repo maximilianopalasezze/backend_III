@@ -19,7 +19,7 @@ Compose monta esta migración para una base nueva. Un volumen MySQL ya existente
 
 ID duplicado, mantenimiento de una cuenta cerrada y cierre con saldo distinto de cero devuelven 409; cuenta inexistente devuelve 404; datos inválidos devuelven 400. Repetir el cierre conserva la fecha original. No existe borrado ni reapertura implícita.
 
-Las rutas internas mantienen la autenticación Basic del servicio y el rol `SERVICE` heredados. Sin credenciales responden 401 y el usuario VIEWER recibe 403. La exposición de gestión en BFF Web con permisos OAuth2 se incorporará en la integración siguiente; estas rutas no deben publicarse como una API administrativa abierta.
+Las rutas internas mantienen la autenticación Basic del servicio y el rol `SERVICE` heredados. Sin credenciales responden 401 y el usuario VIEWER recibe 403. BFF Web expone la gestión con OAuth2, scope `web:gestion` y control de cuenta autorizada. Las rutas internas permanecen en la red del despliegue; los accesos del canal pasan por el BFF.
 
 ## Compilación y prueba local
 
@@ -82,4 +82,4 @@ $env:SPRING_DATASOURCE_PASSWORD = $env:DB_PASSWORD
 
 Enviar POST a `http://localhost:8093/api/operaciones/cuentas/900001/retiros`, con Basic Auth de servicio y cuerpo `{"monto":1000}`. Se espera 409 con el mensaje `La cuenta está cerrada`. Comprobar después en MySQL que el saldo continúa en cero, el estado sigue CERRADA y no existe una operación para esa cuenta en `operaciones_cajero`.
 
-El rechazo sucede antes de modificar saldos, registrar operaciones y emitir eventos. El caso y su consulta de consistencia se verificaron localmente con Postman y MySQL. Las operaciones aprobadas y su publicación/consumo Kafka requieren el broker y forman parte de la validación de integración. La gestión mediante BFF Web/OAuth2 y la ejecución de los nuevos contratos en AWS siguen pendientes.
+El rechazo sucede antes de modificar saldos, registrar operaciones y emitir eventos. El caso y su consulta de consistencia se verificaron localmente con Postman y MySQL. Las operaciones aprobadas y su publicación/consumo Kafka requieren el broker y forman parte de la validación de integración. En EC2, BFF Web comprobó apertura y operaciones con OAuth2 y HTTPS. MS-CUENTAS se desplegó con dos réplicas y tráfico real hacia ambas; su interrupción controlada produjo fallback 503 y la restauración recuperó consultas 200 con los saldos 5500/2000 conservados.
